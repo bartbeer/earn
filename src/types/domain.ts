@@ -1,0 +1,37 @@
+// Shared domain types mirroring the eventual database model (master spec
+// section 41), so Phase 2+ can swap mock data for real Supabase rows without
+// reshaping the UI layer.
+
+export type OccurrenceStatus = 'pending' | 'completed';
+
+export interface Child {
+  id: string;
+  name: string;
+}
+
+/** One earnable instance of a chore on one date — the row a checkbox controls. */
+export interface ChoreOccurrence {
+  id: string;
+  choreId: string;
+  childId: string;
+  /** Snapshot of the chore's name at scheduling time — survives chore renames (section 42). */
+  name: string;
+  /** Snapshot of the chore's amount at scheduling time — survives chore price changes (section 42). */
+  amountCents: number;
+  scheduledDate: string; // ISO date (YYYY-MM-DD), interpreted in the family's timezone
+  status: OccurrenceStatus;
+}
+
+export type PaymentStatus = 'not_paid' | 'paid';
+
+export interface WeekSummary {
+  id: string;
+  childId: string;
+  weekStart: string; // ISO date, Monday
+  weekEnd: string; // ISO date, Sunday
+  maximumCents: number;
+  earnedCents: number;
+  paymentStatus: PaymentStatus;
+  paidAmountCents: number | null;
+  occurrences: ChoreOccurrence[];
+}

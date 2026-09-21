@@ -29,7 +29,9 @@
           "root": "./src/app"
         }
       ],
-      "expo-splash-screen"
+      "expo-splash-screen",
+      "expo-asset",
+      "expo-font"
     ]
   }
 }
