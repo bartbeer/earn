@@ -1,28 +1,48 @@
 import { useLocalSearchParams } from 'expo-router';
-import { useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Button } from '@/components/Button';
 import { Card } from '@/components/Card';
 import { ChoreRow } from '@/components/ChoreRow';
-import { getWeekById } from '@/lib/mockData';
+import { fetchWeekById } from '@/lib/api/weeks';
 import { formatCurrency } from '@/lib/money';
 import { colors, spacing, typography } from '@/lib/theme';
-import type { PaymentStatus } from '@/types/domain';
+import type { PaymentStatus, WeekSummary } from '@/types/domain';
 
-// Mark as paid / undo paid is UI-only in Phase 1 — it resets on remount.
+// Mark as paid / undo paid is UI-only in Phase 1-3 — it resets on remount.
 // Phase 8 wires this to a real backend write with a paid-amount snapshot
 // (master spec section 24: the snapshot must never change after the fact).
 export default function WeekDetailScreen() {
   const { weekId } = useLocalSearchParams<{ weekId: string }>();
-  const week = getWeekById(weekId);
-  const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>(
-    week?.paymentStatus ?? 'not_paid',
-  );
+  const [week, setWeek] = useState<WeekSummary | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>('not_paid');
+
+  useEffect(() => {
+    let isMounted = true;
+    fetchWeekById(weekId).then((result) => {
+      if (!isMounted) return;
+      setWeek(result);
+      if (result) setPaymentStatus(result.paymentStatus);
+      setIsLoading(false);
+    });
+    return () => {
+      isMounted = false;
+    };
+  }, [weekId]);
+
+  if (isLoading) {
+    return (
+      <View style={styles.centered}>
+        <ActivityIndicator color={colors.primary} />
+      </View>
+    );
+  }
 
   if (!week) {
     return (
-      <View style={styles.screen}>
+      <View style={styles.centered}>
         <Text style={typography.body}>Week not found.</Text>
       </View>
     );
@@ -71,6 +91,12 @@ export default function WeekDetailScreen() {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
+    backgroundColor: colors.background,
+  },
+  centered: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
     backgroundColor: colors.background,
   },
   content: {

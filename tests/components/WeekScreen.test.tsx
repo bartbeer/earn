@@ -1,18 +1,52 @@
-import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 
 import WeekScreen from '@/app/(tabs)/index';
+import { fetchCurrentWeek } from '@/lib/api/weeks';
+import type { WeekSummary } from '@/types/domain';
 
 import { withSafeArea } from '../testUtils';
 
-jest.mock('@/lib/mockData', () => {
-  const now = new Date();
-  const todayISO = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-  const child = { id: 'child-emma', name: 'Emma' };
-  const occurrences = [
+jest.mock('@/lib/auth/AuthProvider', () => ({
+  useAuth: () => ({
+    isLoading: false,
+    appState: {
+      status: 'active',
+      membership: {
+        familyId: 'family-1',
+        familyName: 'Test Family',
+        role: 'child',
+        childId: 'child-1',
+      },
+    },
+  }),
+}));
+
+jest.mock('@/hooks/useFamilyChildren', () => ({
+  useFamilyChildren: () => ({ children: [], isLoading: false, error: null }),
+}));
+
+jest.mock('@/lib/api/weeks', () => ({
+  fetchCurrentWeek: jest.fn(),
+}));
+
+const mockedFetchCurrentWeek = fetchCurrentWeek as jest.MockedFunction<typeof fetchCurrentWeek>;
+
+const todayISO = new Date().toISOString().slice(0, 10);
+
+const sampleWeek: WeekSummary = {
+  id: 'week-1',
+  childId: 'child-1',
+  weekStart: todayISO,
+  weekEnd: todayISO,
+  maximumCents: 300,
+  earnedCents: 50,
+  paymentStatus: 'not_paid',
+  paidAmountCents: null,
+  occurrences: [
     {
       id: 'occ-room-tidy',
       choreId: 'chore-room-tidy',
-      childId: child.id,
+      childId: 'child-1',
       name: 'Room tidy',
       amountCents: 250,
       scheduledDate: todayISO,
@@ -21,64 +55,45 @@ jest.mock('@/lib/mockData', () => {
     {
       id: 'occ-dishwasher',
       choreId: 'chore-dishwasher',
-      childId: child.id,
+      childId: 'child-1',
       name: 'Dishwasher',
       amountCents: 50,
       scheduledDate: todayISO,
       status: 'completed',
     },
-  ];
+  ],
+};
 
-  return {
-    children: [child],
-    getCurrentWeek: () => ({
-      id: 'week-mock',
-      childId: child.id,
-      weekStart: todayISO,
-      weekEnd: todayISO,
-      maximumCents: 300,
-      earnedCents: 50,
-      paymentStatus: 'not_paid',
-      paidAmountCents: null,
-      occurrences,
-    }),
-    getWeekHistory: () => [],
-    getWeekById: () => undefined,
-  };
+beforeEach(() => {
+  mockedFetchCurrentWeek.mockReset();
 });
-
-// Fake timers make the simulated load delay deterministic instead of racing
-// a real 300ms setTimeout against the test.
-beforeEach(() => jest.useFakeTimers());
-afterEach(() => jest.useRealTimers());
-
-async function renderLoaded() {
-  await render(withSafeArea(<WeekScreen />));
-  await act(async () => {
-    jest.advanceTimersByTime(300);
-  });
-}
 
 // Covers the two most important interaction guarantees from master spec
 // section 59: a loading state renders, and checking a chore updates the
 // earned amount immediately.
 describe('WeekScreen', () => {
-  it('shows a loading state before the chore list appears', async () => {
+  it('shows a loading state before the fetched chore list appears', async () => {
+    let resolveFetch: (value: WeekSummary) => void = () => {};
+    mockedFetchCurrentWeek.mockImplementation(
+      () => new Promise((resolve) => (resolveFetch = resolve)),
+    );
+
     await render(withSafeArea(<WeekScreen />));
     expect(screen.getByLabelText('Loading')).toBeTruthy();
 
     await act(async () => {
-      jest.advanceTimersByTime(300);
+      resolveFetch(sampleWeek);
     });
 
-    expect(screen.queryByLabelText('Loading')).toBeNull();
+    await waitFor(() => expect(screen.queryByLabelText('Loading')).toBeNull());
     expect(screen.getByText('Room tidy')).toBeTruthy();
   });
 
   it('updates the earned amount immediately when a chore is checked', async () => {
-    await renderLoaded();
+    mockedFetchCurrentWeek.mockResolvedValue(sampleWeek);
 
-    expect(screen.getByText('€0.50 / €3.00')).toBeTruthy();
+    await render(withSafeArea(<WeekScreen />));
+    await waitFor(() => expect(screen.getByText('€0.50 / €3.00')).toBeTruthy());
 
     const checkbox = screen.getByRole('checkbox', { name: /Room tidy/ });
     expect(checkbox.props.accessibilityState.checked).toBe(false);
@@ -91,5 +106,13 @@ describe('WeekScreen', () => {
     expect(
       screen.getByRole('checkbox', { name: /Room tidy/ }).props.accessibilityState.checked,
     ).toBe(true);
+  });
+
+  it('shows an empty state when the child has no chores this week', async () => {
+    mockedFetchCurrentWeek.mockResolvedValue(null);
+
+    await render(withSafeArea(<WeekScreen />));
+
+    await waitFor(() => expect(screen.getByText('Nothing planned yet.')).toBeTruthy());
   });
 });

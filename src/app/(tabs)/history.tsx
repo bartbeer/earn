@@ -1,32 +1,84 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Card } from '@/components/Card';
-import { ChildSwitcher } from '@/components/ChildSwitcher';
+import { ChildSwitcher, type ChildSwitcherItem } from '@/components/ChildSwitcher';
 import { EmptyState } from '@/components/EmptyState';
-import { children, getCurrentWeek, getWeekHistory } from '@/lib/mockData';
-import { calculateEarnedCents, calculateMaximumCents, formatCurrency } from '@/lib/money';
+import { useFamilyChildren } from '@/hooks/useFamilyChildren';
+import { useAuth } from '@/lib/auth/AuthProvider';
+import { fetchCurrentWeek, fetchWeekHistory } from '@/lib/api/weeks';
+import { formatCurrency } from '@/lib/money';
 import { colors, minTouchTarget, spacing, typography } from '@/lib/theme';
+import type { WeekSummary } from '@/types/domain';
 
 // History shows only "what happened that week" — no graphs, no scores
 // (master spec section 25).
 export default function HistoryScreen() {
+  const { appState } = useAuth();
   const insets = useSafeAreaInsets();
-  const [selectedChildId, setSelectedChildId] = useState(children[0].id);
-  const weeks = getWeekHistory(selectedChildId);
 
-  const childSwitcherItems = children.map((child) => {
-    const current = getCurrentWeek(child.id);
-    return {
-      id: child.id,
-      name: child.name,
-      earnedCents: calculateEarnedCents(current.occurrences),
-      maximumCents: calculateMaximumCents(current.occurrences),
+  // See index.tsx for why the membership-derived values use fallbacks
+  // instead of an early return here: every hook must run unconditionally.
+  const membership = appState.status === 'active' ? appState.membership : null;
+  const familyId = membership?.familyId ?? '';
+  const isParent = membership?.role === 'parent';
+
+  const { children } = useFamilyChildren(familyId);
+
+  const [explicitChildId, setExplicitChildId] = useState<string | null>(null);
+  const defaultChildId = isParent ? (children[0]?.id ?? null) : (membership?.childId ?? null);
+  const selectedChildId = explicitChildId ?? defaultChildId;
+
+  const [switcherSummaries, setSwitcherSummaries] = useState<ChildSwitcherItem[]>([]);
+  useEffect(() => {
+    if (!isParent || children.length <= 1) return;
+    let isMounted = true;
+    Promise.all(
+      children.map(async (child) => {
+        const week = await fetchCurrentWeek(child.id);
+        return {
+          id: child.id,
+          name: child.name,
+          earnedCents: week?.earnedCents ?? 0,
+          maximumCents: week?.maximumCents ?? 0,
+        };
+      }),
+    ).then((summaries) => {
+      if (isMounted) setSwitcherSummaries(summaries);
+    });
+    return () => {
+      isMounted = false;
     };
-  });
+  }, [isParent, children]);
+
+  const [weeks, setWeeks] = useState<WeekSummary[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  useEffect(() => {
+    // No child selected yet — see index.tsx's identical effect for why this
+    // is safe to leave isLoading untouched here.
+    if (!selectedChildId) return;
+
+    let isMounted = true;
+    // Intentional: re-showing loading when selectedChildId changes
+    // (switching children) is the desired behaviour, not an accidental
+    // cascading render.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setIsLoading(true);
+    fetchWeekHistory(selectedChildId).then((result) => {
+      if (isMounted) {
+        setWeeks(result);
+        setIsLoading(false);
+      }
+    });
+    return () => {
+      isMounted = false;
+    };
+  }, [selectedChildId]);
+
+  if (!membership) return null;
 
   return (
     <ScrollView
@@ -35,13 +87,15 @@ export default function HistoryScreen() {
     >
       <Text style={typography.screenTitle}>History</Text>
 
-      <ChildSwitcher
-        items={childSwitcherItems}
-        selectedId={selectedChildId}
-        onSelect={setSelectedChildId}
-      />
+      {isParent && children.length > 1 && selectedChildId ? (
+        <ChildSwitcher
+          items={switcherSummaries}
+          selectedId={selectedChildId}
+          onSelect={setExplicitChildId}
+        />
+      ) : null}
 
-      {weeks.length === 0 ? (
+      {isLoading ? null : weeks.length === 0 ? (
         <EmptyState message="No previous weeks yet." />
       ) : (
         <View style={styles.list}>

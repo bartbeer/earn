@@ -2,6 +2,22 @@
 // section 41), so Phase 2+ can swap mock data for real Supabase rows without
 // reshaping the UI layer.
 
+export type Role = 'parent' | 'child';
+
+/**
+ * The signed-in user's family_memberships row — the single authoritative
+ * source of "who am I in this app" (section 77: never trust a client-side
+ * role claim). MVP assumes at most one membership per user; see
+ * src/lib/authState.ts.
+ */
+export interface Membership {
+  familyId: string;
+  familyName: string;
+  role: Role;
+  /** Set only when role === 'child'. */
+  childId: string | null;
+}
+
 export type OccurrenceStatus = 'pending' | 'completed';
 
 export interface Child {

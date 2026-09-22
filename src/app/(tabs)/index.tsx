@@ -1,71 +1,125 @@
+import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { ChildSwitcher } from '@/components/ChildSwitcher';
+import { Button } from '@/components/Button';
+import { ChildSwitcher, type ChildSwitcherItem } from '@/components/ChildSwitcher';
 import { ChoreRow } from '@/components/ChoreRow';
 import { EmptyState } from '@/components/EmptyState';
 import { ProgressBar } from '@/components/ProgressBar';
 import { ChoreListSkeleton } from '@/components/Skeleton';
+import { useFamilyChildren } from '@/hooks/useFamilyChildren';
+import { useAuth } from '@/lib/auth/AuthProvider';
 import { isOccurrenceToday, toISODate } from '@/lib/date';
-import { children, getCurrentWeek } from '@/lib/mockData';
-import { calculateEarnedCents, calculateMaximumCents, formatCurrency } from '@/lib/money';
+import { fetchCurrentWeek } from '@/lib/api/weeks';
+import { formatCurrency } from '@/lib/money';
 import { colors, spacing, typography } from '@/lib/theme';
-import type { ChoreOccurrence } from '@/types/domain';
-
-// Mock-only: simulates the brief loading period a real Supabase fetch would
-// have, so the skeleton state has somewhere to appear (Phase 2+ replaces this
-// with a real query).
-const MOCK_LOAD_DELAY_MS = 300;
+import type { ChoreOccurrence, WeekSummary } from '@/types/domain';
 
 export default function WeekScreen() {
+  const { appState } = useAuth();
   const insets = useSafeAreaInsets();
-  const [selectedChildId, setSelectedChildId] = useState(children[0].id);
-  const [isLoading, setIsLoading] = useState(true);
-  const [occurrencesByChild, setOccurrencesByChild] = useState<Record<string, ChoreOccurrence[]>>(
-    () =>
-      Object.fromEntries(children.map((child) => [child.id, getCurrentWeek(child.id).occurrences])),
-  );
 
+  // Every hook below must run unconditionally on every render (React's
+  // rules of hooks) — so the 'active' membership is read into safe
+  // fallbacks here, and the actual bail-out for a non-active appState
+  // happens after all hooks, in the JSX below. In practice this screen is
+  // never mounted for a non-active appState anyway (see _layout.tsx's
+  // Stack.Protected), so the fallbacks are never visibly exercised.
+  const membership = appState.status === 'active' ? appState.membership : null;
+  const familyId = membership?.familyId ?? '';
+  const isParent = membership?.role === 'parent';
+
+  const { children } = useFamilyChildren(familyId);
+
+  // Derived, not stored+synced via an effect: the default is "the first
+  // child" for a parent or "yourself" for a child, unless the user has
+  // explicitly picked someone else in the switcher.
+  const [explicitChildId, setExplicitChildId] = useState<string | null>(null);
+  const defaultChildId = isParent ? (children[0]?.id ?? null) : (membership?.childId ?? null);
+  const selectedChildId = explicitChildId ?? defaultChildId;
+
+  const [switcherSummaries, setSwitcherSummaries] = useState<ChildSwitcherItem[]>([]);
   useEffect(() => {
-    const timer = setTimeout(() => setIsLoading(false), MOCK_LOAD_DELAY_MS);
-    return () => clearTimeout(timer);
-  }, []);
+    if (!isParent || children.length <= 1) return;
+    let isMounted = true;
+    Promise.all(
+      children.map(async (child) => {
+        const week = await fetchCurrentWeek(child.id);
+        return {
+          id: child.id,
+          name: child.name,
+          earnedCents: week?.earnedCents ?? 0,
+          maximumCents: week?.maximumCents ?? 0,
+        };
+      }),
+    ).then((summaries) => {
+      if (isMounted) setSwitcherSummaries(summaries);
+    });
+    return () => {
+      isMounted = false;
+    };
+  }, [isParent, children]);
 
-  const todayISO = toISODate(new Date());
-  const occurrences = occurrencesByChild[selectedChildId] ?? [];
+  const [week, setWeek] = useState<WeekSummary | null>(null);
+  const [isLoadingWeek, setIsLoadingWeek] = useState(true);
+  useEffect(() => {
+    // No child to load for yet (e.g. a parent whose children are still
+    // loading, or one with none at all — handled by the empty state
+    // below). isLoadingWeek is only ever read while a child IS selected,
+    // so leaving it untouched here is harmless.
+    if (!selectedChildId) return;
 
-  const earnedCents = calculateEarnedCents(occurrences);
-  const maximumCents = calculateMaximumCents(occurrences);
-  const progress = maximumCents === 0 ? 0 : earnedCents / maximumCents;
+    let isMounted = true;
+    // Intentional: re-showing the skeleton when selectedChildId changes
+    // (switching children) is the desired behaviour, not an accidental
+    // cascading render.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setIsLoadingWeek(true);
+    fetchCurrentWeek(selectedChildId).then((result) => {
+      if (isMounted) {
+        setWeek(result);
+        setIsLoadingWeek(false);
+      }
+    });
+    return () => {
+      isMounted = false;
+    };
+  }, [selectedChildId]);
 
-  const sections = groupOccurrencesByStatus(occurrences, todayISO);
-
+  // Checkbox toggling is local-only until Phase 6 adds the completion RPC
+  // (see the comment on chore_occurrences in the Phase 2 migrations) — the
+  // same pattern Phase 1 established, now seeded from a real fetch instead
+  // of mock data.
   function toggleOccurrence(occurrenceId: string) {
-    setOccurrencesByChild((current) => ({
-      ...current,
-      [selectedChildId]: current[selectedChildId].map((occurrence) =>
+    setWeek((current) => {
+      if (!current) return current;
+      const occurrences = current.occurrences.map((occurrence) =>
         occurrence.id === occurrenceId
-          ? {
-              ...occurrence,
-              status: occurrence.status === 'completed' ? 'pending' : 'completed',
-            }
+          ? { ...occurrence, status: occurrence.status === 'completed' ? 'pending' : 'completed' }
           : occurrence,
-      ),
-    }));
+      ) as ChoreOccurrence[];
+      const earnedCents = occurrences
+        .filter((o) => o.status === 'completed')
+        .reduce((sum, o) => sum + o.amountCents, 0);
+      return { ...current, occurrences, earnedCents };
+    });
   }
 
-  const childSwitcherItems = children.map((child) => {
-    const childOccurrences = occurrencesByChild[child.id] ?? [];
-    return {
-      id: child.id,
-      name: child.name,
-      earnedCents: calculateEarnedCents(childOccurrences),
-      maximumCents: calculateMaximumCents(childOccurrences),
-    };
-  });
+  if (!membership) return null;
 
-  const hasAnyChores = occurrences.length > 0;
+  if (isParent && children.length === 0) {
+    return (
+      <View style={[styles.screen, styles.centered, { paddingTop: insets.top }]}>
+        <Text style={typography.screenTitle}>Add your first child</Text>
+        <Button label="Add child" onPress={() => router.push('/add-child')} />
+      </View>
+    );
+  }
+
+  const todayISO = toISODate(new Date());
+  const sections = week ? groupOccurrencesByStatus(week.occurrences, todayISO) : null;
 
   return (
     <ScrollView
@@ -74,39 +128,45 @@ export default function WeekScreen() {
     >
       <Text style={typography.sectionLabel}>This week</Text>
 
-      <ChildSwitcher
-        items={childSwitcherItems}
-        selectedId={selectedChildId}
-        onSelect={setSelectedChildId}
-      />
+      {isParent && children.length > 1 && selectedChildId ? (
+        <ChildSwitcher
+          items={switcherSummaries}
+          selectedId={selectedChildId}
+          onSelect={setExplicitChildId}
+        />
+      ) : null}
 
       <View style={styles.earnedBlock}>
         <Text style={typography.secondaryMeta}>Earned</Text>
         <Text style={typography.primaryNumber}>
-          {formatCurrency(earnedCents)}{' '}
-          <Text style={styles.maximum}>/ {formatCurrency(maximumCents)}</Text>
+          {formatCurrency(week?.earnedCents ?? 0)}{' '}
+          <Text style={styles.maximum}>/ {formatCurrency(week?.maximumCents ?? 0)}</Text>
         </Text>
-        <ProgressBar progress={progress} />
+        <ProgressBar
+          progress={!week || week.maximumCents === 0 ? 0 : week.earnedCents / week.maximumCents}
+        />
       </View>
 
-      {isLoading ? (
+      {isLoadingWeek ? (
         <ChoreListSkeleton />
-      ) : !hasAnyChores ? (
+      ) : !week || week.occurrences.length === 0 ? (
         <EmptyState message="Nothing planned yet." />
       ) : (
-        <>
-          <ChoreSection title="Today" occurrences={sections.today} onToggle={toggleOccurrence} />
-          <ChoreSection
-            title="Later this week"
-            occurrences={sections.later}
-            onToggle={toggleOccurrence}
-          />
-          <ChoreSection
-            title="Completed"
-            occurrences={sections.completed}
-            onToggle={toggleOccurrence}
-          />
-        </>
+        sections && (
+          <>
+            <ChoreSection title="Today" occurrences={sections.today} onToggle={toggleOccurrence} />
+            <ChoreSection
+              title="Later this week"
+              occurrences={sections.later}
+              onToggle={toggleOccurrence}
+            />
+            <ChoreSection
+              title="Completed"
+              occurrences={sections.completed}
+              onToggle={toggleOccurrence}
+            />
+          </>
+        )
       )}
     </ScrollView>
   );
@@ -162,6 +222,12 @@ const styles = StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: colors.background,
+  },
+  centered: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xl,
+    paddingHorizontal: spacing.xl,
   },
   content: {
     paddingHorizontal: spacing.lg,
