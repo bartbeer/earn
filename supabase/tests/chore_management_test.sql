@@ -90,6 +90,17 @@ SELECT is(
 );
 
 -- ==== Deactivation (section 43: archive, never delete) ========================
+-- Completed first: deactivating a chore cleans up its still-PENDING
+-- occurrences (see chore_deactivation_cleanup_test.sql — the child
+-- shouldn't keep seeing work the parent just said they don't need
+-- anymore), but must never touch one that's already been done and
+-- counted toward earned money.
+reset role;
+update public.chore_occurrences set status = 'completed', completed_at = now()
+  where chore_id = '90000000-0000-0000-0000-000000000004';
+set local role authenticated;
+set local request.jwt.claims to '{"sub": "90000000-0000-0000-0000-000000000001", "role": "authenticated"}';
+
 SELECT lives_ok(
   $$ update public.chores set active = false where id = '90000000-0000-0000-0000-000000000004' $$,
   'a parent can deactivate a chore'
@@ -102,7 +113,7 @@ SELECT is(
 SELECT is(
   (select count(*) from public.chore_occurrences where chore_id = '90000000-0000-0000-0000-000000000004'),
   1::bigint,
-  'the deactivated chore''s historical occurrence still exists'
+  'the deactivated chore''s completed historical occurrence still exists'
 );
 
 reset role;
