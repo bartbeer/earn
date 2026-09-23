@@ -57,6 +57,12 @@ function RootNavigator() {
         guard={appState.status === 'active' && appState.membership.role === 'parent'}
       >
         <Stack.Screen name="add-child" options={{ headerShown: true, headerTitle: 'Add child' }} />
+        <Stack.Screen name="manage-chores" options={{ headerShown: true, headerTitle: 'Chores' }} />
+        <Stack.Screen name="add-chore" options={{ headerShown: true, headerTitle: 'Add chore' }} />
+        <Stack.Screen
+          name="edit-chore/[choreId]"
+          options={{ headerShown: true, headerTitle: 'Edit chore' }}
+        />
       </Stack.Protected>
     </Stack>
   );

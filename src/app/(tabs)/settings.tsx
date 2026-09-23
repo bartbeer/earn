@@ -12,8 +12,8 @@ import { colors, spacing, typography } from '@/lib/theme';
 
 // A short, flat settings list — no nested menus (master spec section 27).
 // Children see a minimal version: section 7 explicitly excludes them from
-// parent management functionality. Rows here are display-only until their
-// features exist: chores (Phase 4), join code (Phase 9), parent PIN (Phase 9).
+// parent management functionality. Join code and Parent PIN are still
+// display-only — those features land in Phase 9.
 export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
   const { appState, signOut } = useAuth();
@@ -61,7 +61,7 @@ function ParentSections({ familyId }: { familyId: string }) {
       </Section>
 
       <Section title="Chores">
-        <SettingsRow label="Manage chores" onPress={() => {}} />
+        <SettingsRow label="Manage chores" onPress={() => router.push('/manage-chores')} />
       </Section>
 
       <Section title="Family">

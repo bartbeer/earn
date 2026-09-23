@@ -25,6 +25,21 @@ export interface Child {
   name: string;
 }
 
+export type RecurrenceType = 'once_weekly' | 'selected_days' | 'daily';
+
+/** A chore definition (master spec section 28). Editing this never rewrites already-created occurrences — see ChoreOccurrence. */
+export interface Chore {
+  id: string;
+  familyId: string;
+  childId: string;
+  name: string;
+  amountCents: number;
+  recurrenceType: RecurrenceType;
+  active: boolean;
+  /** 0 = Sunday .. 6 = Saturday. Empty for 'daily' (every day is implicit). */
+  scheduleDays: number[];
+}
+
 /** One earnable instance of a chore on one date — the row a checkbox controls. */
 export interface ChoreOccurrence {
   id: string;
