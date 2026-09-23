@@ -85,3 +85,14 @@ export async function addChild(familyId: string, name: string): Promise<Child> {
   if (error) throw error;
   return data;
 }
+
+/**
+ * Removes a child from view. Never deletes — a database trigger cascades
+ * this into deactivating their chores too (which itself cascades into
+ * cleaning up pending occurrences), so history survives exactly the way
+ * deactivating a chore directly already preserves it (section 43).
+ */
+export async function deactivateChild(childId: string): Promise<void> {
+  const { error } = await supabase.from('children').update({ active: false }).eq('id', childId);
+  if (error) throw error;
+}

@@ -21,7 +21,11 @@ jest.mock('@/lib/auth/AuthProvider', () => ({
 }));
 
 jest.mock('@/hooks/useFamilyChildren', () => ({
-  useFamilyChildren: () => ({ children: [], isLoading: false, error: null }),
+  useFamilyChildren: () => ({ children: [], isLoading: false, error: null, refetch: jest.fn() }),
+}));
+
+jest.mock('@/lib/api/family', () => ({
+  deactivateChild: jest.fn(),
 }));
 
 // Section 7: children must not get access to parent management functionality.

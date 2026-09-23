@@ -8,6 +8,8 @@ interface UseFamilyChildrenResult {
   children: Child[];
   isLoading: boolean;
   error: Error | null;
+  /** Re-fetches without needing a navigation focus event — e.g. right after deactivating a child on the same screen. */
+  refetch: () => void;
 }
 
 /**
@@ -22,32 +24,31 @@ export function useFamilyChildren(familyId: string): UseFamilyChildrenResult {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 
-  useFocusEffect(
-    useCallback(() => {
-      // Empty familyId only happens for a render tick before the route
-      // guard in _layout.tsx has settled on 'active' state — nothing to
-      // fetch yet.
-      if (!familyId) return;
+  const load = useCallback(() => {
+    // Empty familyId only happens for a render tick before the route guard
+    // in _layout.tsx has settled on 'active' state — nothing to fetch yet.
+    if (!familyId) return undefined;
 
-      let isMounted = true;
-      fetchChildren(familyId)
-        .then((result) => {
-          if (isMounted) {
-            setChildren(result);
-            setError(null);
-          }
-        })
-        .catch((err: Error) => {
-          if (isMounted) setError(err);
-        })
-        .finally(() => {
-          if (isMounted) setIsLoading(false);
-        });
-      return () => {
-        isMounted = false;
-      };
-    }, [familyId]),
-  );
+    let isMounted = true;
+    fetchChildren(familyId)
+      .then((result) => {
+        if (isMounted) {
+          setChildren(result);
+          setError(null);
+        }
+      })
+      .catch((err: Error) => {
+        if (isMounted) setError(err);
+      })
+      .finally(() => {
+        if (isMounted) setIsLoading(false);
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, [familyId]);
 
-  return { children, isLoading, error };
+  useFocusEffect(load);
+
+  return { children, isLoading, error, refetch: load };
 }

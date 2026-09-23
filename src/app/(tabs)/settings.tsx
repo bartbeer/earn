@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
 import type { PropsWithChildren } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Card } from '@/components/Card';
@@ -8,7 +8,9 @@ import { Divider } from '@/components/Divider';
 import { SettingsRow } from '@/components/SettingsRow';
 import { useFamilyChildren } from '@/hooks/useFamilyChildren';
 import { useAuth } from '@/lib/auth/AuthProvider';
+import { deactivateChild } from '@/lib/api/family';
 import { colors, spacing, typography } from '@/lib/theme';
+import type { Child } from '@/types/domain';
 
 // A short, flat settings list — no nested menus (master spec section 27).
 // Children see a minimal version: section 7 explicitly excludes them from
@@ -42,7 +44,24 @@ export default function SettingsScreen() {
 }
 
 function ParentSections({ familyId }: { familyId: string }) {
-  const { children } = useFamilyChildren(familyId);
+  const { children, refetch } = useFamilyChildren(familyId);
+
+  function confirmRemove(child: Child) {
+    // A confirmation here is deliberate even though section 15 says not to
+    // add one for routine actions like checking off a chore — removing a
+    // child is a rare, hard-to-notice-if-reversed action, not a checkbox.
+    Alert.alert(`Remove ${child.name}?`, "They'll no longer appear in the app.", [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Remove',
+        style: 'destructive',
+        onPress: async () => {
+          await deactivateChild(child.id);
+          refetch();
+        },
+      },
+    ]);
+  }
 
   return (
     <>
@@ -53,7 +72,7 @@ function ParentSections({ familyId }: { familyId: string }) {
       <Section title="Children">
         {children.map((child) => (
           <View key={child.id}>
-            <SettingsRow label={child.name} />
+            <SettingsRow label={child.name} onPress={() => confirmRemove(child)} />
             <Divider />
           </View>
         ))}
