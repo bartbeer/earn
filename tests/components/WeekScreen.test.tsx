@@ -6,6 +6,18 @@ import type { WeekSummary } from '@/types/domain';
 
 import { withSafeArea } from '../testUtils';
 
+// useFocusEffect needs a real NavigationContainer, which isn't present when
+// rendering a screen in isolation — mocked via a real useEffect (not
+// invoked synchronously) so it still runs post-render, just without the
+// "only when this screen is focused" part real navigation would add.
+jest.mock('expo-router', () => {
+  const { useEffect } = require('react');
+  return {
+    router: { push: jest.fn(), back: jest.fn(), replace: jest.fn() },
+    useFocusEffect: (effect: () => void | (() => void)) => useEffect(effect, []),
+  };
+});
+
 jest.mock('@/lib/auth/AuthProvider', () => ({
   useAuth: () => ({
     isLoading: false,

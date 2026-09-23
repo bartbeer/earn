@@ -38,7 +38,7 @@ export default function HistoryScreen() {
     let isMounted = true;
     Promise.all(
       children.map(async (child) => {
-        const week = await fetchCurrentWeek(child.id);
+        const week = await fetchCurrentWeek(child.id, familyId);
         return {
           id: child.id,
           name: child.name,
@@ -52,7 +52,7 @@ export default function HistoryScreen() {
     return () => {
       isMounted = false;
     };
-  }, [isParent, children]);
+  }, [isParent, children, familyId]);
 
   const [weeks, setWeeks] = useState<WeekSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);

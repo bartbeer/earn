@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { router, useFocusEffect } from 'expo-router';
+import { useCallback, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Button } from '@/components/Button';
@@ -24,19 +24,24 @@ export default function ManageChoresScreen() {
   const [chores, setChores] = useState<Chore[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    if (!familyId) return;
-    let isMounted = true;
-    fetchChores(familyId).then((result) => {
-      if (isMounted) {
-        setChores(result);
-        setIsLoading(false);
-      }
-    });
-    return () => {
-      isMounted = false;
-    };
-  }, [familyId]);
+  // useFocusEffect (not a plain useEffect) so returning from add-chore /
+  // edit-chore shows the change immediately — deactivating a chore, for
+  // instance, should drop it from this list without needing a full remount.
+  useFocusEffect(
+    useCallback(() => {
+      if (!familyId) return;
+      let isMounted = true;
+      fetchChores(familyId).then((result) => {
+        if (isMounted) {
+          setChores(result);
+          setIsLoading(false);
+        }
+      });
+      return () => {
+        isMounted = false;
+      };
+    }, [familyId]),
+  );
 
   const childNameById = Object.fromEntries(children.map((child) => [child.id, child.name]));
 

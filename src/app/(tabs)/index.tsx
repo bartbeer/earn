@@ -1,5 +1,5 @@
-import { router } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { router, useFocusEffect } from 'expo-router';
+import { useCallback, useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -46,7 +46,7 @@ export default function WeekScreen() {
     let isMounted = true;
     Promise.all(
       children.map(async (child) => {
-        const week = await fetchCurrentWeek(child.id);
+        const week = await fetchCurrentWeek(child.id, familyId);
         return {
           id: child.id,
           name: child.name,
@@ -60,33 +60,35 @@ export default function WeekScreen() {
     return () => {
       isMounted = false;
     };
-  }, [isParent, children]);
+  }, [isParent, children, familyId]);
 
   const [week, setWeek] = useState<WeekSummary | null>(null);
   const [isLoadingWeek, setIsLoadingWeek] = useState(true);
-  useEffect(() => {
-    // No child to load for yet (e.g. a parent whose children are still
-    // loading, or one with none at all — handled by the empty state
-    // below). isLoadingWeek is only ever read while a child IS selected,
-    // so leaving it untouched here is harmless.
-    if (!selectedChildId) return;
+  // useFocusEffect (not a plain useEffect) so returning from add-chore /
+  // edit-chore / manage-chores re-triggers generation and picks up the
+  // change immediately, rather than only refreshing on selectedChildId
+  // changing or a full remount.
+  useFocusEffect(
+    useCallback(() => {
+      // No child to load for yet (e.g. a parent whose children are still
+      // loading, or one with none at all — handled by the empty state
+      // below). isLoadingWeek is only ever read while a child IS selected,
+      // so leaving it untouched here is harmless.
+      if (!selectedChildId) return;
 
-    let isMounted = true;
-    // Intentional: re-showing the skeleton when selectedChildId changes
-    // (switching children) is the desired behaviour, not an accidental
-    // cascading render.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setIsLoadingWeek(true);
-    fetchCurrentWeek(selectedChildId).then((result) => {
-      if (isMounted) {
-        setWeek(result);
-        setIsLoadingWeek(false);
-      }
-    });
-    return () => {
-      isMounted = false;
-    };
-  }, [selectedChildId]);
+      let isMounted = true;
+      setIsLoadingWeek(true);
+      fetchCurrentWeek(selectedChildId, familyId).then((result) => {
+        if (isMounted) {
+          setWeek(result);
+          setIsLoadingWeek(false);
+        }
+      });
+      return () => {
+        isMounted = false;
+      };
+    }, [selectedChildId, familyId]),
+  );
 
   // Checkbox toggling is local-only until Phase 6 adds the completion RPC
   // (see the comment on chore_occurrences in the Phase 2 migrations) — the

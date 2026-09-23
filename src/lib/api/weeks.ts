@@ -74,8 +74,28 @@ function mapWeekRow(row: WeeklyAllowanceRow, occurrences: ChoreOccurrence[]): We
 const WEEKLY_ALLOWANCE_COLUMNS =
   'id, child_id, week_start, week_end, maximum_cents, earned_cents, payment_status, paid_amount_cents';
 
+/**
+ * Ensures this week's occurrences exist for a family before reading them —
+ * the on-demand trigger for Phase 5's recurrence generation (see the RPC's
+ * own comments in the migration for why there's no cron job: calling this
+ * idempotent function is safe and cheap enough to just do on every read,
+ * which also means opening the app after any gap self-heals rather than
+ * needing a scheduler).
+ */
+export async function generateCurrentWeekOccurrences(familyId: string): Promise<void> {
+  const { error } = await supabase.rpc('generate_current_week_occurrences', {
+    p_family_id: familyId,
+  });
+  if (error) throw error;
+}
+
 /** The week containing today, or null if none has been generated yet for this child. */
-export async function fetchCurrentWeek(childId: string): Promise<WeekSummary | null> {
+export async function fetchCurrentWeek(
+  childId: string,
+  familyId: string,
+): Promise<WeekSummary | null> {
+  await generateCurrentWeekOccurrences(familyId);
+
   const today = toISODate(new Date());
   const { data, error } = await supabase
     .from('weekly_allowances')
