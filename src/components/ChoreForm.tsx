@@ -40,7 +40,16 @@ export function ChoreForm({
   extraAction,
 }: ChoreFormProps) {
   const [name, setName] = useState(initialValues?.name ?? '');
-  const [childId, setChildId] = useState(initialValues?.childId ?? childOptions[0]?.id ?? '');
+  // No silent default when there's a real choice to make: pre-selecting
+  // childOptions[0] meant a parent who added a chore without noticing (or
+  // tapping) the child chip got it silently assigned to whoever happened to
+  // sort first alphabetically — a real reported bug where a chore assigned
+  // this way kept showing up for that other child no matter how many times
+  // the app was reloaded, since it never belonged to the intended child at
+  // all. With only one child there's no ambiguity to force a choice about.
+  const [childId, setChildId] = useState(
+    initialValues?.childId ?? (childOptions.length === 1 ? childOptions[0].id : ''),
+  );
   const [amountText, setAmountText] = useState(
     initialValues?.amountCents !== undefined ? (initialValues.amountCents / 100).toFixed(2) : '',
   );

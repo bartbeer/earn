@@ -51,11 +51,35 @@ describe('ChoreForm', () => {
     );
 
     await changeText('Chore name', 'Room tidy');
+    await press('Emma');
     await changeText('Amount per completion (€)', '2.50');
     // 'Weekly' (once_weekly) is already the default; no day picked.
     await press('Add chore');
 
     expect(screen.getByText('Choose one day.')).toBeTruthy();
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  // Regression test — reported as "I added a child and a chore, removed the
+  // child, and the chore was still shown on the Week screen." Root cause:
+  // with two-plus children, the child picker silently pre-selected
+  // childOptions[0] (alphabetically first), so a parent who added a chore
+  // without noticing/tapping the intended child's chip got it silently
+  // assigned to someone else entirely — no amount of reloading the app
+  // could then make that chore disappear when the intended child was later
+  // removed, because it never belonged to them in the first place.
+  it('does not preselect a child when there is more than one option', async () => {
+    const onSubmit = jest.fn();
+    await render(
+      <ChoreForm childOptions={childOptions} submitLabel="Add chore" onSubmit={onSubmit} />,
+    );
+
+    await changeText('Chore name', 'Room tidy');
+    await changeText('Amount per completion (€)', '2.50');
+    await press('Saturday', 'label');
+    await press('Add chore');
+
+    expect(screen.getByText('Choose a child.')).toBeTruthy();
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
