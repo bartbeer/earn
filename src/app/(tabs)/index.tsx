@@ -35,10 +35,16 @@ export default function WeekScreen() {
 
   // Derived, not stored+synced via an effect: the default is "the first
   // child" for a parent or "yourself" for a child, unless the user has
-  // explicitly picked someone else in the switcher.
+  // explicitly picked someone else in the switcher. The explicit pick is
+  // only honoured while it's still a real, active child — otherwise (e.g.
+  // the parent had NewKid selected and then removed NewKid) this falls
+  // back to the default instead of staying stuck showing a removed
+  // child's stale data with no name to show for it in the switcher.
   const [explicitChildId, setExplicitChildId] = useState<string | null>(null);
   const defaultChildId = isParent ? (children[0]?.id ?? null) : (membership?.childId ?? null);
-  const selectedChildId = explicitChildId ?? defaultChildId;
+  const explicitChildStillValid =
+    explicitChildId !== null && children.some((child) => child.id === explicitChildId);
+  const selectedChildId = explicitChildStillValid ? explicitChildId : defaultChildId;
 
   const [switcherSummaries, setSwitcherSummaries] = useState<ChildSwitcherItem[]>([]);
   useEffect(() => {

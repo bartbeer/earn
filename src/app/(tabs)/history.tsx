@@ -28,9 +28,13 @@ export default function HistoryScreen() {
 
   const { children } = useFamilyChildren(familyId);
 
+  // See index.tsx's identical logic for why the explicit pick is only
+  // honoured while it's still a real, active child.
   const [explicitChildId, setExplicitChildId] = useState<string | null>(null);
   const defaultChildId = isParent ? (children[0]?.id ?? null) : (membership?.childId ?? null);
-  const selectedChildId = explicitChildId ?? defaultChildId;
+  const explicitChildStillValid =
+    explicitChildId !== null && children.some((child) => child.id === explicitChildId);
+  const selectedChildId = explicitChildStillValid ? explicitChildId : defaultChildId;
 
   const [switcherSummaries, setSwitcherSummaries] = useState<ChildSwitcherItem[]>([]);
   // useFocusEffect (not a plain useEffect) throughout this screen, same
