@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { router, useFocusEffect } from 'expo-router';
+import { useCallback, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -33,50 +33,55 @@ export default function HistoryScreen() {
   const selectedChildId = explicitChildId ?? defaultChildId;
 
   const [switcherSummaries, setSwitcherSummaries] = useState<ChildSwitcherItem[]>([]);
-  useEffect(() => {
-    if (!isParent || children.length <= 1) return;
-    let isMounted = true;
-    Promise.all(
-      children.map(async (child) => {
-        const week = await fetchCurrentWeek(child.id, familyId);
-        return {
-          id: child.id,
-          name: child.name,
-          earnedCents: week?.earnedCents ?? 0,
-          maximumCents: week?.maximumCents ?? 0,
-        };
-      }),
-    ).then((summaries) => {
-      if (isMounted) setSwitcherSummaries(summaries);
-    });
-    return () => {
-      isMounted = false;
-    };
-  }, [isParent, children, familyId]);
+  // useFocusEffect (not a plain useEffect) throughout this screen, same
+  // reasoning as useFamilyChildren and the Week screen: returning to
+  // History after completing something or adding a child elsewhere should
+  // show fresh data, not whatever was current the first time this screen
+  // mounted.
+  useFocusEffect(
+    useCallback(() => {
+      if (!isParent || children.length <= 1) return;
+      let isMounted = true;
+      Promise.all(
+        children.map(async (child) => {
+          const week = await fetchCurrentWeek(child.id, familyId);
+          return {
+            id: child.id,
+            name: child.name,
+            earnedCents: week?.earnedCents ?? 0,
+            maximumCents: week?.maximumCents ?? 0,
+          };
+        }),
+      ).then((summaries) => {
+        if (isMounted) setSwitcherSummaries(summaries);
+      });
+      return () => {
+        isMounted = false;
+      };
+    }, [isParent, children, familyId]),
+  );
 
   const [weeks, setWeeks] = useState<WeekSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  useEffect(() => {
-    // No child selected yet — see index.tsx's identical effect for why this
-    // is safe to leave isLoading untouched here.
-    if (!selectedChildId) return;
+  useFocusEffect(
+    useCallback(() => {
+      // No child selected yet — see index.tsx's identical effect for why
+      // this is safe to leave isLoading untouched here.
+      if (!selectedChildId) return;
 
-    let isMounted = true;
-    // Intentional: re-showing loading when selectedChildId changes
-    // (switching children) is the desired behaviour, not an accidental
-    // cascading render.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setIsLoading(true);
-    fetchWeekHistory(selectedChildId).then((result) => {
-      if (isMounted) {
-        setWeeks(result);
-        setIsLoading(false);
-      }
-    });
-    return () => {
-      isMounted = false;
-    };
-  }, [selectedChildId]);
+      let isMounted = true;
+      setIsLoading(true);
+      fetchWeekHistory(selectedChildId).then((result) => {
+        if (isMounted) {
+          setWeeks(result);
+          setIsLoading(false);
+        }
+      });
+      return () => {
+        isMounted = false;
+      };
+    }, [selectedChildId]),
+  );
 
   if (!membership) return null;
 
