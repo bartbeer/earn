@@ -29,11 +29,14 @@ export default function SettingsScreen() {
     >
       <Text style={typography.screenTitle}>Settings</Text>
 
-      {isParent ? <ParentSections familyId={membership.familyId} /> : null}
-
+      {/* Sign out first, not last — a parent's settings has several cards
+          below it (Allowance/Children/Chores/Family/Security), and burying
+          this at the bottom meant scrolling past all of them to find it. */}
       <Section title="Account">
         <SettingsRow label="Sign out" onPress={() => signOut()} />
       </Section>
+
+      {isParent ? <ParentSections familyId={membership.familyId} /> : null}
     </ScrollView>
   );
 }

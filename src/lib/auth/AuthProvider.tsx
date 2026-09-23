@@ -30,15 +30,15 @@ export function AuthProvider({ children }: PropsWithChildren) {
   useEffect(() => {
     let isMounted = true;
 
-    async function loadMembership() {
-      const membership = await fetchMembership();
+    async function loadMembership(userId: string) {
+      const membership = await fetchMembership(userId);
       if (isMounted) setMemberships(membership ? [membership] : []);
     }
 
     supabase.auth.getSession().then(async ({ data }) => {
       if (!isMounted) return;
       setSession(data.session);
-      if (data.session) await loadMembership();
+      if (data.session) await loadMembership(data.session.user.id);
       if (isMounted) setIsLoading(false);
     });
 
@@ -46,7 +46,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
       if (!isMounted) return;
       setSession(newSession);
       if (newSession) {
-        await loadMembership();
+        await loadMembership(newSession.user.id);
       } else {
         setMemberships([]);
       }
@@ -61,7 +61,8 @@ export function AuthProvider({ children }: PropsWithChildren) {
   const appState = resolveAppState(session !== null, memberships);
 
   async function refreshMembership() {
-    const membership = await fetchMembership();
+    if (!session) return;
+    const membership = await fetchMembership(session.user.id);
     setMemberships(membership ? [membership] : []);
   }
 

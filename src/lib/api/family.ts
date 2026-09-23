@@ -24,12 +24,19 @@ function mapMembership(row: MembershipRow): Membership {
   };
 }
 
-/** The signed-in user's membership, or null if they belong to no family yet. */
-export async function fetchMembership(): Promise<Membership | null> {
+/**
+ * The signed-in user's own membership, or null if they belong to no family
+ * yet. Takes userId explicitly and filters on it — RLS also restricts this
+ * table to the caller's own row, but a real bug (fixed in migration
+ * 20260923114930) showed that "just trust RLS to narrow it" isn't enough
+ * on its own if RLS is ever loosened later: filter explicitly here too,
+ * rather than relying on whichever row happens to come back first.
+ */
+export async function fetchMembership(userId: string): Promise<Membership | null> {
   const { data, error } = await supabase
     .from('family_memberships')
     .select('family_id, role, child_id, families(name)')
-    .limit(1)
+    .eq('user_id', userId)
     .maybeSingle();
   if (error) throw error;
   return data ? mapMembership(data as MembershipRow) : null;
