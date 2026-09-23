@@ -1,7 +1,7 @@
-// Real Supabase reads for a child's weeks. Read-only by design: checkbox
-// completion and payment status still have no client write path (see the
-// comments on chore_occurrences/weekly_allowances in the Phase 2
-// migrations) until Phase 6/8 add the narrow RPCs those need.
+// Real Supabase reads/writes for a child's weeks. Completion now goes
+// through the set_occurrence_completion RPC (Phase 6) — payment status
+// still has no client write path (see the comments on weekly_allowances in
+// the Phase 2 migrations) until Phase 8 adds that RPC.
 import { toISODate } from '@/lib/date';
 import { supabase } from '@/lib/supabase';
 import type { ChoreOccurrence, WeekSummary } from '@/types/domain';
@@ -132,6 +132,24 @@ export async function fetchWeekHistory(childId: string): Promise<WeekSummary[]> 
       return mapWeekRow(week, occurrences);
     }),
   );
+}
+
+/**
+ * Marks an occurrence completed or not. Returns the authoritative updated
+ * row — the caller should reconcile local optimistic state with this
+ * rather than assuming its own guess was exactly right (section 50: the
+ * database is the source of truth).
+ */
+export async function setOccurrenceCompletion(
+  occurrenceId: string,
+  completed: boolean,
+): Promise<ChoreOccurrence> {
+  const { data, error } = await supabase.rpc('set_occurrence_completion', {
+    p_occurrence_id: occurrenceId,
+    p_completed: completed,
+  });
+  if (error) throw error;
+  return mapOccurrence(data as OccurrenceRow);
 }
 
 export async function fetchWeekById(weeklyAllowanceId: string): Promise<WeekSummary | null> {

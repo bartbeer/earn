@@ -12,8 +12,8 @@ import { ChoreListSkeleton } from '@/components/Skeleton';
 import { useFamilyChildren } from '@/hooks/useFamilyChildren';
 import { useAuth } from '@/lib/auth/AuthProvider';
 import { isOccurrenceToday, toISODate } from '@/lib/date';
-import { fetchCurrentWeek } from '@/lib/api/weeks';
-import { formatCurrency } from '@/lib/money';
+import { fetchCurrentWeek, setOccurrenceCompletion } from '@/lib/api/weeks';
+import { calculateEarnedCents, formatCurrency } from '@/lib/money';
 import { colors, spacing, typography } from '@/lib/theme';
 import type { ChoreOccurrence, WeekSummary } from '@/types/domain';
 
@@ -90,23 +90,64 @@ export default function WeekScreen() {
     }, [selectedChildId, familyId]),
   );
 
-  // Checkbox toggling is local-only until Phase 6 adds the completion RPC
-  // (see the comment on chore_occurrences in the Phase 2 migrations) — the
-  // same pattern Phase 1 established, now seeded from a real fetch instead
-  // of mock data.
+  // Which occurrences currently have a completion request in flight —
+  // their checkboxes are disabled meanwhile (double-tap protection at the
+  // UI layer, on top of the RPC being safe to call twice regardless).
+  const [pendingToggleIds, setPendingToggleIds] = useState<Set<string>>(new Set());
+  const [toggleError, setToggleError] = useState<string | null>(null);
+
+  function applyOccurrenceUpdate(
+    current: WeekSummary | null,
+    occurrenceId: string,
+    updater: (occurrence: ChoreOccurrence) => ChoreOccurrence,
+  ): WeekSummary | null {
+    if (!current) return current;
+    const occurrences = current.occurrences.map((occurrence) =>
+      occurrence.id === occurrenceId ? updater(occurrence) : occurrence,
+    );
+    return { ...current, occurrences, earnedCents: calculateEarnedCents(occurrences) };
+  }
+
+  // Checkbox toggling feels instant (section 15): the UI updates
+  // optimistically before the network round-trip resolves, then
+  // reconciles with (or rolls back to match) whatever the database — the
+  // real source of truth (section 50) — actually ends up saying.
   function toggleOccurrence(occurrenceId: string) {
-    setWeek((current) => {
-      if (!current) return current;
-      const occurrences = current.occurrences.map((occurrence) =>
-        occurrence.id === occurrenceId
-          ? { ...occurrence, status: occurrence.status === 'completed' ? 'pending' : 'completed' }
-          : occurrence,
-      ) as ChoreOccurrence[];
-      const earnedCents = occurrences
-        .filter((o) => o.status === 'completed')
-        .reduce((sum, o) => sum + o.amountCents, 0);
-      return { ...current, occurrences, earnedCents };
-    });
+    if (pendingToggleIds.has(occurrenceId)) return;
+
+    const target = week?.occurrences.find((o) => o.id === occurrenceId);
+    if (!target) return;
+    const nextCompleted = target.status !== 'completed';
+
+    setToggleError(null);
+    setWeek((current) =>
+      applyOccurrenceUpdate(current, occurrenceId, (o) => ({
+        ...o,
+        status: nextCompleted ? 'completed' : 'pending',
+      })),
+    );
+    setPendingToggleIds((current) => new Set(current).add(occurrenceId));
+
+    setOccurrenceCompletion(occurrenceId, nextCompleted)
+      .then((updated) => {
+        setWeek((current) => applyOccurrenceUpdate(current, occurrenceId, () => updated));
+      })
+      .catch(() => {
+        setWeek((current) =>
+          applyOccurrenceUpdate(current, occurrenceId, (o) => ({
+            ...o,
+            status: nextCompleted ? 'pending' : 'completed',
+          })),
+        );
+        setToggleError("Couldn't save that. Try again.");
+      })
+      .finally(() => {
+        setPendingToggleIds((current) => {
+          const next = new Set(current);
+          next.delete(occurrenceId);
+          return next;
+        });
+      });
   }
 
   if (!membership) return null;
@@ -149,6 +190,8 @@ export default function WeekScreen() {
         />
       </View>
 
+      {toggleError ? <Text style={styles.error}>{toggleError}</Text> : null}
+
       {isLoadingWeek ? (
         <ChoreListSkeleton />
       ) : !week || week.occurrences.length === 0 ? (
@@ -156,16 +199,23 @@ export default function WeekScreen() {
       ) : (
         sections && (
           <>
-            <ChoreSection title="Today" occurrences={sections.today} onToggle={toggleOccurrence} />
+            <ChoreSection
+              title="Today"
+              occurrences={sections.today}
+              onToggle={toggleOccurrence}
+              pendingIds={pendingToggleIds}
+            />
             <ChoreSection
               title="Later this week"
               occurrences={sections.later}
               onToggle={toggleOccurrence}
+              pendingIds={pendingToggleIds}
             />
             <ChoreSection
               title="Completed"
               occurrences={sections.completed}
               onToggle={toggleOccurrence}
+              pendingIds={pendingToggleIds}
             />
           </>
         )
@@ -199,9 +249,10 @@ interface ChoreSectionProps {
   title: string;
   occurrences: ChoreOccurrence[];
   onToggle: (occurrenceId: string) => void;
+  pendingIds: Set<string>;
 }
 
-function ChoreSection({ title, occurrences, onToggle }: ChoreSectionProps) {
+function ChoreSection({ title, occurrences, onToggle, pendingIds }: ChoreSectionProps) {
   if (occurrences.length === 0) return null;
 
   return (
@@ -214,6 +265,7 @@ function ChoreSection({ title, occurrences, onToggle }: ChoreSectionProps) {
           amountCents={occurrence.amountCents}
           completed={occurrence.status === 'completed'}
           onToggle={() => onToggle(occurrence.id)}
+          disabled={pendingIds.has(occurrence.id)}
         />
       ))}
     </View>
@@ -246,5 +298,9 @@ const styles = StyleSheet.create({
   },
   section: {
     gap: spacing.xs,
+  },
+  error: {
+    color: '#B3261E',
+    fontSize: 14,
   },
 });

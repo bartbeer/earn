@@ -9,6 +9,8 @@ interface ChoreRowProps {
   amountCents: number;
   completed: boolean;
   onToggle: () => void;
+  /** True while this occurrence's toggle is already in flight (double-tap protection). */
+  disabled?: boolean;
 }
 
 /**
@@ -16,15 +18,20 @@ interface ChoreRowProps {
  * tappable (not just the checkbox) so it's an easy target for young children
  * (master spec sections 13, 31).
  */
-export function ChoreRow({ name, amountCents, completed, onToggle }: ChoreRowProps) {
+export function ChoreRow({ name, amountCents, completed, onToggle, disabled }: ChoreRowProps) {
   const label = `${name}, ${formatCurrency(amountCents)}, ${completed ? 'completed' : 'not completed'}`;
 
   return (
     // accessible={false}: the inner Checkbox already exposes the full
     // checkbox role/label/state. Without this, a screen reader would land on
     // two identical "checkbox, name, amount" stops for the same row.
-    <Pressable onPress={onToggle} accessible={false} style={styles.row}>
-      <Checkbox checked={completed} onToggle={onToggle} accessibilityLabel={label} />
+    <Pressable onPress={onToggle} disabled={disabled} accessible={false} style={styles.row}>
+      <Checkbox
+        checked={completed}
+        onToggle={onToggle}
+        accessibilityLabel={label}
+        disabled={disabled}
+      />
       <View style={styles.textGroup}>
         <Text style={[typography.taskName, completed && styles.completedText]} numberOfLines={1}>
           {name}

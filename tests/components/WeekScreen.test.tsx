@@ -1,8 +1,8 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 
 import WeekScreen from '@/app/(tabs)/index';
-import { fetchCurrentWeek } from '@/lib/api/weeks';
-import type { WeekSummary } from '@/types/domain';
+import { fetchCurrentWeek, setOccurrenceCompletion } from '@/lib/api/weeks';
+import type { ChoreOccurrence, WeekSummary } from '@/types/domain';
 
 import { withSafeArea } from '../testUtils';
 
@@ -39,11 +39,25 @@ jest.mock('@/hooks/useFamilyChildren', () => ({
 
 jest.mock('@/lib/api/weeks', () => ({
   fetchCurrentWeek: jest.fn(),
+  setOccurrenceCompletion: jest.fn(),
 }));
 
 const mockedFetchCurrentWeek = fetchCurrentWeek as jest.MockedFunction<typeof fetchCurrentWeek>;
+const mockedSetOccurrenceCompletion = setOccurrenceCompletion as jest.MockedFunction<
+  typeof setOccurrenceCompletion
+>;
 
 const todayISO = new Date().toISOString().slice(0, 10);
+
+const roomTidy: ChoreOccurrence = {
+  id: 'occ-room-tidy',
+  choreId: 'chore-room-tidy',
+  childId: 'child-1',
+  name: 'Room tidy',
+  amountCents: 250,
+  scheduledDate: todayISO,
+  status: 'pending',
+};
 
 const sampleWeek: WeekSummary = {
   id: 'week-1',
@@ -55,15 +69,7 @@ const sampleWeek: WeekSummary = {
   paymentStatus: 'not_paid',
   paidAmountCents: null,
   occurrences: [
-    {
-      id: 'occ-room-tidy',
-      choreId: 'chore-room-tidy',
-      childId: 'child-1',
-      name: 'Room tidy',
-      amountCents: 250,
-      scheduledDate: todayISO,
-      status: 'pending',
-    },
+    roomTidy,
     {
       id: 'occ-dishwasher',
       choreId: 'chore-dishwasher',
@@ -78,11 +84,14 @@ const sampleWeek: WeekSummary = {
 
 beforeEach(() => {
   mockedFetchCurrentWeek.mockReset();
+  mockedSetOccurrenceCompletion.mockReset();
 });
 
-// Covers the two most important interaction guarantees from master spec
-// section 59: a loading state renders, and checking a chore updates the
-// earned amount immediately.
+// Covers master spec section 59's important-UI-behaviour list: a loading
+// state renders, checking a chore updates the earned amount immediately
+// (before the network round-trip resolves — section 15's "should feel
+// instant"), a failed save rolls back, and rapid repeated taps don't fire
+// more than one request (section 64's double-tap protection).
 describe('WeekScreen', () => {
   it('shows a loading state before the fetched chore list appears', async () => {
     let resolveFetch: (value: WeekSummary) => void = () => {};
@@ -101,22 +110,82 @@ describe('WeekScreen', () => {
     expect(screen.getByText('Room tidy')).toBeTruthy();
   });
 
-  it('updates the earned amount immediately when a chore is checked', async () => {
+  it('updates the earned amount immediately, before the save request resolves', async () => {
     mockedFetchCurrentWeek.mockResolvedValue(sampleWeek);
+    let resolveSave: (value: ChoreOccurrence) => void = () => {};
+    mockedSetOccurrenceCompletion.mockImplementation(
+      () => new Promise((resolve) => (resolveSave = resolve)),
+    );
 
     await render(withSafeArea(<WeekScreen />));
     await waitFor(() => expect(screen.getByText('€0.50 / €3.00')).toBeTruthy());
 
     const checkbox = screen.getByRole('checkbox', { name: /Room tidy/ });
-    expect(checkbox.props.accessibilityState.checked).toBe(false);
-
     await act(async () => {
       fireEvent.press(checkbox);
     });
 
+    // Optimistic: updated before setOccurrenceCompletion's promise ever resolves.
     expect(screen.getByText('€3.00 / €3.00')).toBeTruthy();
     expect(
       screen.getByRole('checkbox', { name: /Room tidy/ }).props.accessibilityState.checked,
+    ).toBe(true);
+    expect(mockedSetOccurrenceCompletion).toHaveBeenCalledWith('occ-room-tidy', true);
+
+    await act(async () => {
+      resolveSave({ ...roomTidy, status: 'completed' });
+    });
+    expect(screen.getByText('€3.00 / €3.00')).toBeTruthy();
+  });
+
+  it('rolls back the optimistic update and shows an error when saving fails', async () => {
+    mockedFetchCurrentWeek.mockResolvedValue(sampleWeek);
+    let rejectSave: (error: Error) => void = () => {};
+    mockedSetOccurrenceCompletion.mockImplementation(
+      () => new Promise((_resolve, reject) => (rejectSave = reject)),
+    );
+
+    await render(withSafeArea(<WeekScreen />));
+    await waitFor(() => expect(screen.getByText('€0.50 / €3.00')).toBeTruthy());
+
+    const checkbox = screen.getByRole('checkbox', { name: /Room tidy/ });
+    await act(async () => {
+      fireEvent.press(checkbox);
+    });
+    expect(screen.getByText('€3.00 / €3.00')).toBeTruthy();
+
+    await act(async () => {
+      rejectSave(new Error('network error'));
+    });
+
+    expect(screen.getByText('€0.50 / €3.00')).toBeTruthy();
+    expect(
+      screen.getByRole('checkbox', { name: /Room tidy/ }).props.accessibilityState.checked,
+    ).toBe(false);
+    expect(screen.getByText("Couldn't save that. Try again.")).toBeTruthy();
+  });
+
+  it('ignores repeated taps on the same chore while a save is already in flight', async () => {
+    mockedFetchCurrentWeek.mockResolvedValue(sampleWeek);
+    mockedSetOccurrenceCompletion.mockImplementation(() => new Promise(() => {})); // never resolves
+
+    await render(withSafeArea(<WeekScreen />));
+    await waitFor(() => expect(screen.getByText('€0.50 / €3.00')).toBeTruthy());
+
+    const checkbox = screen.getByRole('checkbox', { name: /Room tidy/ });
+    await act(async () => {
+      fireEvent.press(checkbox);
+    });
+    await act(async () => {
+      fireEvent.press(screen.getByRole('checkbox', { name: /Room tidy/ }));
+    });
+    await act(async () => {
+      fireEvent.press(screen.getByRole('checkbox', { name: /Room tidy/ }));
+    });
+
+    expect(mockedSetOccurrenceCompletion).toHaveBeenCalledTimes(1);
+    expect(
+      screen.getByRole('checkbox', { name: /Room tidy/ }).props.accessibilityState.disabled,
     ).toBe(true);
   });
 
