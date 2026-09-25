@@ -9,11 +9,12 @@ import { colors, spacing, typography } from '@/lib/theme';
 
 // Reachable any time a parent is signed in — right after creating a family
 // (via the Week screen's "Add your first child" empty state, section 88)
-// or later from Settings. Not a one-time onboarding step.
+// or later from Settings. Not a one-time onboarding step. Adding a second
+// child is just tapping "Add child" from Settings again — one add per
+// visit here keeps this screen from doubling as its own mini list.
 export default function AddChildScreen() {
   const { addChild } = useAuth();
   const [name, setName] = useState('');
-  const [addedNames, setAddedNames] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -24,11 +25,9 @@ export default function AddChildScreen() {
     setIsSubmitting(true);
     try {
       await addChild(trimmed);
-      setAddedNames((current) => [...current, trimmed]);
-      setName('');
+      router.back();
     } catch {
       setError("Couldn't add that child. Try again.");
-    } finally {
       setIsSubmitting(false);
     }
   }
@@ -41,16 +40,6 @@ export default function AddChildScreen() {
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <Text style={typography.screenTitle}>Add a child</Text>
 
-        {addedNames.length > 0 ? (
-          <View style={styles.addedList}>
-            {addedNames.map((addedName) => (
-              <Text key={addedName} style={typography.body}>
-                ✓ {addedName}
-              </Text>
-            ))}
-          </View>
-        ) : null}
-
         <View style={styles.form}>
           <TextField label="Name" value={name} onChangeText={setName} autoFocus />
 
@@ -61,7 +50,6 @@ export default function AddChildScreen() {
             onPress={handleAddChild}
             disabled={isSubmitting || !name.trim()}
           />
-          <Button label="Done" variant="secondary" onPress={() => router.back()} />
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -78,9 +66,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     padding: spacing.xl,
     gap: spacing.xxl,
-  },
-  addedList: {
-    gap: spacing.xs,
   },
   form: {
     gap: spacing.lg,
