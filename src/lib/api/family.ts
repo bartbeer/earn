@@ -213,3 +213,43 @@ export async function joinFamilyAsChild(joinCode: string, childId: string): Prom
   });
   if (error) throw error;
 }
+
+/**
+ * Whether this family currently has a Parent PIN set — used to decide
+ * whether Settings' parent sections should be gated at all. Callable by
+ * any family member (not just parents): it's a harmless boolean, and the
+ * app never actually needs to ask a child for the PIN since they can't
+ * see the gated sections in the first place.
+ */
+export async function hasParentPin(familyId: string): Promise<boolean> {
+  const { data, error } = await supabase.rpc('has_parent_pin', { p_family_id: familyId });
+  if (error) throw error;
+  return data as boolean;
+}
+
+/**
+ * Checks a guess against the family's Parent PIN. Returns false for a
+ * wrong guess (a routine, expected outcome — not an error) and true if no
+ * PIN is set at all, matching set_parent_pin/verify_parent_pin's own
+ * "nothing to gate" behavior server-side.
+ */
+export async function verifyParentPin(familyId: string, pin: string): Promise<boolean> {
+  const { data, error } = await supabase.rpc('verify_parent_pin', {
+    p_family_id: familyId,
+    p_pin: pin,
+  });
+  if (error) throw error;
+  return data as boolean;
+}
+
+/** Sets or changes the family's Parent PIN (4-6 digits). Parent-only. */
+export async function setParentPin(familyId: string, pin: string): Promise<void> {
+  const { error } = await supabase.rpc('set_parent_pin', { p_family_id: familyId, p_pin: pin });
+  if (error) throw error;
+}
+
+/** Removes the Parent PIN — Settings' parent sections stop being gated. */
+export async function clearParentPin(familyId: string): Promise<void> {
+  const { error } = await supabase.rpc('clear_parent_pin', { p_family_id: familyId });
+  if (error) throw error;
+}

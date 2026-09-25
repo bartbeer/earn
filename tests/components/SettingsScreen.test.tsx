@@ -1,8 +1,14 @@
-import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import { Alert } from 'react-native';
 
 import SettingsScreen from '@/app/(tabs)/settings';
-import { deactivateChild, forceSwitchChildRewardType, updateChildRewardType } from '@/lib/api/family';
+import {
+  deactivateChild,
+  forceSwitchChildRewardType,
+  hasParentPin,
+  updateChildRewardType,
+  verifyParentPin,
+} from '@/lib/api/family';
 
 import { withSafeArea } from '../testUtils';
 
@@ -41,6 +47,8 @@ jest.mock('@/lib/api/family', () => ({
   deactivateChild: jest.fn(),
   updateChildRewardType: jest.fn(),
   forceSwitchChildRewardType: jest.fn(),
+  hasParentPin: jest.fn(),
+  verifyParentPin: jest.fn(),
 }));
 
 const mockedDeactivateChild = deactivateChild as jest.MockedFunction<typeof deactivateChild>;
@@ -50,6 +58,8 @@ const mockedUpdateChildRewardType = updateChildRewardType as jest.MockedFunction
 const mockedForceSwitchChildRewardType = forceSwitchChildRewardType as jest.MockedFunction<
   typeof forceSwitchChildRewardType
 >;
+const mockedHasParentPin = hasParentPin as jest.MockedFunction<typeof hasParentPin>;
+const mockedVerifyParentPin = verifyParentPin as jest.MockedFunction<typeof verifyParentPin>;
 
 function pressAlertButton(alertSpy: jest.SpyInstance, text: string) {
   const [, , buttons] = alertSpy.mock.calls[alertSpy.mock.calls.length - 1];
@@ -57,18 +67,26 @@ function pressAlertButton(alertSpy: jest.SpyInstance, text: string) {
   return button?.onPress?.();
 }
 
+async function renderUnlocked() {
+  mockedHasParentPin.mockResolvedValue(false);
+  await render(withSafeArea(<SettingsScreen />));
+  await waitFor(() => expect(screen.getByText('Emma')).toBeTruthy());
+}
+
 beforeEach(() => {
   mockRefetch.mockReset();
   mockedDeactivateChild.mockReset().mockResolvedValue(undefined);
   mockedUpdateChildRewardType.mockReset().mockResolvedValue(undefined);
   mockedForceSwitchChildRewardType.mockReset().mockResolvedValue(undefined);
+  mockedHasParentPin.mockReset();
+  mockedVerifyParentPin.mockReset();
 });
 
 // Covers master spec section 27: settings stays a short, flat list of
 // sections, not a nested management dashboard.
 describe('SettingsScreen as a parent', () => {
   it('renders every required parent section, each child by name, and their reward type', async () => {
-    await render(withSafeArea(<SettingsScreen />));
+    await renderUnlocked();
 
     expect(screen.getByText('Allowance')).toBeTruthy();
     expect(screen.getByText('Children')).toBeTruthy();
@@ -88,7 +106,7 @@ describe('SettingsScreen as a parent', () => {
   it('removes a child only after confirming, then refreshes the list', async () => {
     const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
 
-    await render(withSafeArea(<SettingsScreen />));
+    await renderUnlocked();
 
     await act(async () => {
       fireEvent.press(screen.getByText('Emma'));
@@ -109,7 +127,7 @@ describe('SettingsScreen as a parent', () => {
   it('switches a child to the other reward type, then refreshes the list', async () => {
     const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
 
-    await render(withSafeArea(<SettingsScreen />));
+    await renderUnlocked();
 
     await act(async () => {
       fireEvent.press(screen.getByText('Emma'));
@@ -127,7 +145,7 @@ describe('SettingsScreen as a parent', () => {
   it('offers switching back to euros for a stars child', async () => {
     const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
 
-    await render(withSafeArea(<SettingsScreen />));
+    await renderUnlocked();
 
     await act(async () => {
       fireEvent.press(screen.getByText('Lucas'));
@@ -150,7 +168,7 @@ describe('SettingsScreen as a parent', () => {
     mockedUpdateChildRewardType.mockReset().mockRejectedValue(new Error('locked'));
     const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
 
-    await render(withSafeArea(<SettingsScreen />));
+    await renderUnlocked();
 
     await act(async () => {
       fireEvent.press(screen.getByText('Emma'));
@@ -174,7 +192,7 @@ describe('SettingsScreen as a parent', () => {
     mockedUpdateChildRewardType.mockReset().mockRejectedValue(new Error('locked'));
     const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
 
-    await render(withSafeArea(<SettingsScreen />));
+    await renderUnlocked();
 
     await act(async () => {
       fireEvent.press(screen.getByText('Emma'));
@@ -199,7 +217,7 @@ describe('SettingsScreen as a parent', () => {
     mockedForceSwitchChildRewardType.mockReset().mockRejectedValue(new Error('paid week exists'));
     const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
 
-    await render(withSafeArea(<SettingsScreen />));
+    await renderUnlocked();
 
     await act(async () => {
       fireEvent.press(screen.getByText('Emma'));
@@ -215,5 +233,62 @@ describe('SettingsScreen as a parent', () => {
     expect(mockRefetch).not.toHaveBeenCalled();
 
     alertSpy.mockRestore();
+  });
+});
+
+// Extra feature: the Parent PIN gates the parent-only sections when one is
+// set — a local lock, not a second login, for when a family device
+// sometimes ends up in a child's hands while the parent is still signed in.
+describe('SettingsScreen Parent PIN gate', () => {
+  it('shows the parent sections directly when no PIN is set', async () => {
+    await renderUnlocked();
+
+    expect(screen.getByText('Children')).toBeTruthy();
+    expect(screen.queryByText('Settings locked')).toBeNull();
+  });
+
+  it('shows a PIN entry gate instead of the parent sections when one is set', async () => {
+    mockedHasParentPin.mockResolvedValue(true);
+
+    await render(withSafeArea(<SettingsScreen />));
+
+    await waitFor(() => expect(screen.getByText('Settings locked')).toBeTruthy());
+    expect(screen.queryByText('Children')).toBeNull();
+  });
+
+  it('unlocks and shows the parent sections once the correct PIN is entered', async () => {
+    mockedHasParentPin.mockResolvedValue(true);
+    mockedVerifyParentPin.mockResolvedValue(true);
+
+    await render(withSafeArea(<SettingsScreen />));
+    await waitFor(() => expect(screen.getByText('Settings locked')).toBeTruthy());
+
+    await act(async () => {
+      fireEvent.changeText(screen.getByLabelText('Parent PIN'), '4242');
+    });
+    await act(async () => {
+      fireEvent.press(screen.getByText('Unlock'));
+    });
+
+    expect(mockedVerifyParentPin).toHaveBeenCalledWith('family-1', '4242');
+    await waitFor(() => expect(screen.getByText('Children')).toBeTruthy());
+  });
+
+  it('shows an error and stays locked for a wrong PIN', async () => {
+    mockedHasParentPin.mockResolvedValue(true);
+    mockedVerifyParentPin.mockResolvedValue(false);
+
+    await render(withSafeArea(<SettingsScreen />));
+    await waitFor(() => expect(screen.getByText('Settings locked')).toBeTruthy());
+
+    await act(async () => {
+      fireEvent.changeText(screen.getByLabelText('Parent PIN'), '0000');
+    });
+    await act(async () => {
+      fireEvent.press(screen.getByText('Unlock'));
+    });
+
+    await waitFor(() => expect(screen.getByText('Wrong PIN. Try again.')).toBeTruthy());
+    expect(screen.queryByText('Children')).toBeNull();
   });
 });

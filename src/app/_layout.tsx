@@ -64,6 +64,10 @@ function RootNavigator() {
           options={{ headerShown: true, headerTitle: 'Edit chore' }}
         />
         <Stack.Screen name="join-code" options={{ headerShown: true, headerTitle: 'Join code' }} />
+        <Stack.Screen
+          name="parent-pin"
+          options={{ headerShown: true, headerTitle: 'Parent PIN' }}
+        />
       </Stack.Protected>
     </Stack>
   );

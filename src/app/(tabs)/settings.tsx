@@ -1,20 +1,29 @@
 import { router } from 'expo-router';
 import type { PropsWithChildren } from 'react';
+import { useEffect, useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { Button } from '@/components/Button';
 import { Card } from '@/components/Card';
 import { Divider } from '@/components/Divider';
 import { SettingsRow } from '@/components/SettingsRow';
+import { TextField } from '@/components/TextField';
 import { useFamilyChildren } from '@/hooks/useFamilyChildren';
 import { useAuth } from '@/lib/auth/AuthProvider';
-import { deactivateChild, forceSwitchChildRewardType, updateChildRewardType } from '@/lib/api/family';
+import {
+  deactivateChild,
+  forceSwitchChildRewardType,
+  hasParentPin,
+  updateChildRewardType,
+  verifyParentPin,
+} from '@/lib/api/family';
 import { colors, spacing, typography } from '@/lib/theme';
 import type { Child, RewardType } from '@/types/domain';
 
 // A short, flat settings list — no nested menus (master spec section 27).
 // Children see a minimal version: section 7 explicitly excludes them from
-// parent management functionality. Parent PIN is still display-only.
+// parent management functionality.
 export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
   const { appState, signOut } = useAuth();
@@ -44,6 +53,61 @@ export default function SettingsScreen() {
 
 function ParentSections({ familyId }: { familyId: string }) {
   const { children, refetch } = useFamilyChildren(familyId);
+
+  // Undefined = still checking whether a PIN is even required; once known,
+  // isUnlocked starts true if there's nothing to gate. It only ever flips
+  // to false→true (never back), so once entered correctly it stays open
+  // for the rest of this app session — this state lives in a component
+  // that persists across tab switches (React Navigation keeps tab screens
+  // mounted), so it naturally resets only on a full app reload, which is
+  // the point: someone else picking the device back up later means a
+  // fresh launch, not just a tab switch.
+  const [pinRequired, setPinRequired] = useState<boolean | undefined>(undefined);
+  const [isUnlocked, setIsUnlocked] = useState(false);
+  const [pinInput, setPinInput] = useState('');
+  const [pinError, setPinError] = useState<string | null>(null);
+  const [isVerifying, setIsVerifying] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+    hasParentPin(familyId)
+      .then((required) => {
+        if (isMounted) {
+          setPinRequired(required);
+          if (!required) setIsUnlocked(true);
+        }
+      })
+      .catch(() => {
+        // Fails open rather than locking a parent out of their own
+        // Settings over a network hiccup — the PIN is a convenience gate,
+        // not the app's real security boundary (that's auth + RLS).
+        if (isMounted) {
+          setPinRequired(false);
+          setIsUnlocked(true);
+        }
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, [familyId]);
+
+  async function handleUnlock() {
+    setPinError(null);
+    setIsVerifying(true);
+    try {
+      const correct = await verifyParentPin(familyId, pinInput.trim());
+      if (correct) {
+        setIsUnlocked(true);
+      } else {
+        setPinError('Wrong PIN. Try again.');
+      }
+    } catch {
+      setPinError("Couldn't check that. Try again.");
+    } finally {
+      setIsVerifying(false);
+      setPinInput('');
+    }
+  }
 
   function rewardTypeLabel(rewardType: RewardType) {
     return rewardType === 'stars' ? 'Stars' : 'Euros';
@@ -111,6 +175,32 @@ function ParentSections({ familyId }: { familyId: string }) {
     ]);
   }
 
+  if (pinRequired === undefined) return null;
+
+  if (!isUnlocked) {
+    return (
+      <Section title="Settings locked">
+        <View style={styles.pinGate}>
+          <Text style={typography.body}>Enter the Parent PIN to continue.</Text>
+          <TextField
+            label="Parent PIN"
+            value={pinInput}
+            onChangeText={setPinInput}
+            keyboardType="number-pad"
+            secureTextEntry
+            autoFocus
+          />
+          {pinError ? <Text style={styles.error}>{pinError}</Text> : null}
+          <Button
+            label={isVerifying ? 'Checking…' : 'Unlock'}
+            onPress={handleUnlock}
+            disabled={isVerifying || !pinInput.trim()}
+          />
+        </View>
+      </Section>
+    );
+  }
+
   return (
     <>
       <Section title="Allowance">
@@ -140,7 +230,7 @@ function ParentSections({ familyId }: { familyId: string }) {
       </Section>
 
       <Section title="Security">
-        <SettingsRow label="Parent PIN" onPress={() => {}} />
+        <SettingsRow label="Parent PIN" onPress={() => router.push('/parent-pin')} />
       </Section>
     </>
   );
@@ -159,6 +249,14 @@ const styles = StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: colors.background,
+  },
+  pinGate: {
+    padding: spacing.lg,
+    gap: spacing.md,
+  },
+  error: {
+    color: '#B3261E',
+    fontSize: 14,
   },
   content: {
     paddingHorizontal: spacing.lg,
