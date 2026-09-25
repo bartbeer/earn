@@ -1,6 +1,14 @@
 import { Link } from 'expo-router';
 import { useState } from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 
 import { Button } from '@/components/Button';
 import { TextField } from '@/components/TextField';
@@ -9,7 +17,7 @@ import { colors, spacing, typography } from '@/lib/theme';
 
 // Onboarding step 1 (master spec section 92) — deliberately just one field.
 export default function CreateFamilyScreen() {
-  const { createFamily } = useAuth();
+  const { createFamily, signOut } = useAuth();
   const [name, setName] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -60,6 +68,13 @@ export default function CreateFamilyScreen() {
         <Link href="/(onboarding)/join-family" style={styles.link}>
           <Text style={typography.secondaryMeta}>Joining an existing family? Enter a join code</Text>
         </Link>
+
+        {/* No way back otherwise: a brand-new sign-up with no family yet has
+            no tabs, no menu — without this, a wrong account leaves the
+            screen with no way out at all. */}
+        <Pressable onPress={() => signOut()} style={styles.link}>
+          <Text style={typography.secondaryMeta}>Wrong account? Sign out</Text>
+        </Pressable>
       </ScrollView>
     </KeyboardAvoidingView>
   );

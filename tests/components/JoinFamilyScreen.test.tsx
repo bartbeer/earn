@@ -13,9 +13,10 @@ jest.mock('@/lib/api/family', () => ({
 }));
 
 const mockJoinFamily = jest.fn();
+const mockSignOut = jest.fn();
 
 jest.mock('@/lib/auth/AuthProvider', () => ({
-  useAuth: () => ({ joinFamily: mockJoinFamily }),
+  useAuth: () => ({ joinFamily: mockJoinFamily, signOut: mockSignOut }),
 }));
 
 const mockedResolveFamilyJoinCode = resolveFamilyJoinCode as jest.MockedFunction<
@@ -25,6 +26,7 @@ const mockedResolveFamilyJoinCode = resolveFamilyJoinCode as jest.MockedFunction
 beforeEach(() => {
   mockedResolveFamilyJoinCode.mockReset();
   mockJoinFamily.mockReset();
+  mockSignOut.mockReset();
 });
 
 // Phase 9: a child signs up for their own account normally, then redeems
@@ -142,5 +144,18 @@ describe('JoinFamilyScreen', () => {
     });
 
     expect(screen.getByText("Couldn't join. Try again.")).toBeTruthy();
+  });
+
+  // Reported: a user who forgot to write down their code (codes are never
+  // re-displayed once generated) had no way off this screen at all — no
+  // tabs, no menu, nothing but a code field that couldn't help them.
+  it('signs out when "Wrong account? Sign out" is tapped', async () => {
+    await render(<JoinFamilyScreen />);
+
+    await act(async () => {
+      fireEvent.press(screen.getByText('Wrong account? Sign out'));
+    });
+
+    expect(mockSignOut).toHaveBeenCalled();
   });
 });

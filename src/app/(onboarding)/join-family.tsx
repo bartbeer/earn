@@ -1,6 +1,14 @@
 import { Link } from 'expo-router';
 import { useState } from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 
 import { Button } from '@/components/Button';
 import { Chip } from '@/components/Chip';
@@ -15,7 +23,7 @@ import { colors, spacing, typography } from '@/lib/theme';
 // (Settings > Family > Join code) to link that account to one of the
 // family's existing children.
 export default function JoinFamilyScreen() {
-  const { joinFamily } = useAuth();
+  const { joinFamily, signOut } = useAuth();
   const [code, setCode] = useState('');
   const [resolved, setResolved] = useState<ResolvedJoinCode | null>(null);
   const [selectedChildId, setSelectedChildId] = useState<string | null>(null);
@@ -114,6 +122,13 @@ export default function JoinFamilyScreen() {
         <Link href="/(onboarding)/create-family" style={styles.link}>
           <Text style={typography.secondaryMeta}>Starting a new family instead? Create one</Text>
         </Link>
+
+        {/* No way back otherwise: a brand-new sign-up with no family yet has
+            no tabs, no menu — without this, a lost/expired code or a wrong
+            account leaves the screen with no way out at all. */}
+        <Pressable onPress={() => signOut()} style={styles.link}>
+          <Text style={typography.secondaryMeta}>Wrong account? Sign out</Text>
+        </Pressable>
       </ScrollView>
     </KeyboardAvoidingView>
   );
