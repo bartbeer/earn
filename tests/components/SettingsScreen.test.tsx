@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { Alert } from 'react-native';
 
 import SettingsScreen from '@/app/(tabs)/settings';
-import { deactivateChild, updateChildRewardType } from '@/lib/api/family';
+import { deactivateChild, forceSwitchChildRewardType, updateChildRewardType } from '@/lib/api/family';
 
 import { withSafeArea } from '../testUtils';
 
@@ -40,11 +40,15 @@ jest.mock('@/hooks/useFamilyChildren', () => ({
 jest.mock('@/lib/api/family', () => ({
   deactivateChild: jest.fn(),
   updateChildRewardType: jest.fn(),
+  forceSwitchChildRewardType: jest.fn(),
 }));
 
 const mockedDeactivateChild = deactivateChild as jest.MockedFunction<typeof deactivateChild>;
 const mockedUpdateChildRewardType = updateChildRewardType as jest.MockedFunction<
   typeof updateChildRewardType
+>;
+const mockedForceSwitchChildRewardType = forceSwitchChildRewardType as jest.MockedFunction<
+  typeof forceSwitchChildRewardType
 >;
 
 function pressAlertButton(alertSpy: jest.SpyInstance, text: string) {
@@ -57,6 +61,7 @@ beforeEach(() => {
   mockRefetch.mockReset();
   mockedDeactivateChild.mockReset().mockResolvedValue(undefined);
   mockedUpdateChildRewardType.mockReset().mockResolvedValue(undefined);
+  mockedForceSwitchChildRewardType.mockReset().mockResolvedValue(undefined);
 });
 
 // Covers master spec section 27: settings stays a short, flat list of
@@ -136,10 +141,12 @@ describe('SettingsScreen as a parent', () => {
     alertSpy.mockRestore();
   });
 
-  // The server locks reward_type once a child has any chore — this shows
-  // up here as updateChildRewardType rejecting, which should explain why
-  // rather than fail silently or refresh as if it worked.
-  it('explains why the switch failed when the server rejects it (the child already has chores)', async () => {
+  // The server locks the ordinary switch while the child has an active
+  // chore or any chore history — the app should offer the explicit,
+  // destructive override rather than just failing here (requested
+  // directly: "even if the chore is done, I need to be able to switch...
+  // all finished chores in history can be removed permanently").
+  it('offers a destructive override when the ordinary switch is rejected', async () => {
     mockedUpdateChildRewardType.mockReset().mockRejectedValue(new Error('locked'));
     const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
 
@@ -152,7 +159,59 @@ describe('SettingsScreen as a parent', () => {
       await pressAlertButton(alertSpy, 'Switch to Stars');
     });
 
-    expect(alertSpy).toHaveBeenLastCalledWith("Can't change this", expect.any(String));
+    expect(alertSpy).toHaveBeenLastCalledWith(
+      "Can't change this yet",
+      expect.any(String),
+      expect.any(Array),
+    );
+    expect(mockedForceSwitchChildRewardType).not.toHaveBeenCalled();
+    expect(mockRefetch).not.toHaveBeenCalled();
+
+    alertSpy.mockRestore();
+  });
+
+  it('force-switches and refreshes once the destructive override is confirmed', async () => {
+    mockedUpdateChildRewardType.mockReset().mockRejectedValue(new Error('locked'));
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+
+    await render(withSafeArea(<SettingsScreen />));
+
+    await act(async () => {
+      fireEvent.press(screen.getByText('Emma'));
+    });
+    await act(async () => {
+      await pressAlertButton(alertSpy, 'Switch to Stars');
+    });
+    await act(async () => {
+      await pressAlertButton(alertSpy, 'Delete history & switch');
+    });
+
+    expect(mockedForceSwitchChildRewardType).toHaveBeenCalledWith('child-1', 'stars');
+    expect(mockRefetch).toHaveBeenCalled();
+
+    alertSpy.mockRestore();
+  });
+
+  // The one boundary that survives even the destructive override: a paid
+  // week is never deleted.
+  it('explains that a paid week blocks even the destructive override', async () => {
+    mockedUpdateChildRewardType.mockReset().mockRejectedValue(new Error('locked'));
+    mockedForceSwitchChildRewardType.mockReset().mockRejectedValue(new Error('paid week exists'));
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+
+    await render(withSafeArea(<SettingsScreen />));
+
+    await act(async () => {
+      fireEvent.press(screen.getByText('Emma'));
+    });
+    await act(async () => {
+      await pressAlertButton(alertSpy, 'Switch to Stars');
+    });
+    await act(async () => {
+      await pressAlertButton(alertSpy, 'Delete history & switch');
+    });
+
+    expect(alertSpy).toHaveBeenLastCalledWith("Still can't change this", expect.any(String));
     expect(mockRefetch).not.toHaveBeenCalled();
 
     alertSpy.mockRestore();

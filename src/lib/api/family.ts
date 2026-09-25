@@ -101,11 +101,13 @@ export async function addChild(
 }
 
 /**
- * Changes a child's reward type. The server rejects this once the child has
- * any chore (see the reward-type migration's guard trigger) — there's no
- * safe way to reinterpret an already-recorded amount_cents across a unit
- * change, so the caller should expect this to throw in that case and show a
- * clear explanation rather than a generic error.
+ * Changes a child's reward type. The server rejects this while the child
+ * has an active chore or any recorded chore_occurrences history (see the
+ * reward-type guard trigger) — there's no safe way to reinterpret an
+ * already-recorded amount_cents across a unit change, so the caller should
+ * expect this to throw in that case. forceSwitchChildRewardType() is the
+ * explicit, destructive escape hatch for when a parent wants to override
+ * that and clear the history instead.
  */
 export async function updateChildRewardType(
   childId: string,
@@ -115,6 +117,26 @@ export async function updateChildRewardType(
     .from('children')
     .update({ reward_type: rewardType })
     .eq('id', childId);
+  if (error) throw error;
+}
+
+/**
+ * Overrides the reward-type lock by permanently deleting this child's
+ * chore_occurrences/weekly_allowances history (chore definitions are only
+ * deactivated, matching section 43 everywhere else) and switching the
+ * type. Requested explicitly by the user — this is real, irreversible data
+ * loss, so callers must get an unambiguous destructive confirmation first,
+ * never call this as a silent fallback. The server still refuses outright
+ * if a paid week exists for this child; that boundary has no override.
+ */
+export async function forceSwitchChildRewardType(
+  childId: string,
+  rewardType: RewardType,
+): Promise<void> {
+  const { error } = await supabase.rpc('force_switch_child_reward_type', {
+    p_child_id: childId,
+    p_reward_type: rewardType,
+  });
   if (error) throw error;
 }
 

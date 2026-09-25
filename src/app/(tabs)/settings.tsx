@@ -8,7 +8,7 @@ import { Divider } from '@/components/Divider';
 import { SettingsRow } from '@/components/SettingsRow';
 import { useFamilyChildren } from '@/hooks/useFamilyChildren';
 import { useAuth } from '@/lib/auth/AuthProvider';
-import { deactivateChild, updateChildRewardType } from '@/lib/api/family';
+import { deactivateChild, forceSwitchChildRewardType, updateChildRewardType } from '@/lib/api/family';
 import { colors, spacing, typography } from '@/lib/theme';
 import type { Child, RewardType } from '@/types/domain';
 
@@ -56,14 +56,39 @@ function ParentSections({ familyId }: { familyId: string }) {
       await updateChildRewardType(child.id, nextRewardType);
       refetch();
     } catch {
-      // The server locks this once the child has any chore (see the
-      // reward-type migration) — there's no safe way to reinterpret an
-      // already-recorded amount in the other unit.
-      Alert.alert(
-        "Can't change this",
-        `${child.name} already has chores set up, so switching between euros and stars isn't available anymore.`,
-      );
+      // The server locks this while the child has an active chore or any
+      // recorded chore history — there's no safe way to reinterpret an
+      // already-recorded amount in the other unit. Offer the explicit,
+      // destructive override rather than just failing here.
+      confirmForceSwitchRewardType(child, nextRewardType);
     }
+  }
+
+  function confirmForceSwitchRewardType(child: Child, nextRewardType: RewardType) {
+    Alert.alert(
+      "Can't change this yet",
+      `${child.name} already has chore history. Switching to ${rewardTypeLabel(nextRewardType).toLowerCase()} now will permanently delete their completed chore history and turn off any chores still set up for them. This can't be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete history & switch',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await forceSwitchChildRewardType(child.id, nextRewardType);
+              refetch();
+            } catch {
+              // The one thing even the destructive override never removes:
+              // a paid week is a real record of money/stars already given.
+              Alert.alert(
+                "Still can't change this",
+                `${child.name} has a paid week on record, which is never deleted — their reward type can't be changed anymore.`,
+              );
+            }
+          },
+        },
+      ],
+    );
   }
 
   function confirmChildAction(child: Child) {
