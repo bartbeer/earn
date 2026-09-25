@@ -1,3 +1,4 @@
+import { Link } from 'expo-router';
 import { useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 
@@ -55,6 +56,10 @@ export default function CreateFamilyScreen() {
             disabled={isSubmitting || !name.trim()}
           />
         </View>
+
+        <Link href="/(onboarding)/join-family" style={styles.link}>
+          <Text style={typography.secondaryMeta}>Joining an existing family? Enter a join code</Text>
+        </Link>
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -77,5 +82,9 @@ const styles = StyleSheet.create({
   error: {
     color: '#B3261E',
     fontSize: 14,
+  },
+  link: {
+    alignSelf: 'center',
+    padding: spacing.sm,
   },
 });

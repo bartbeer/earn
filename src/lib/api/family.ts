@@ -150,3 +150,66 @@ export async function deactivateChild(childId: string): Promise<void> {
   const { error } = await supabase.from('children').update({ active: false }).eq('id', childId);
   if (error) throw error;
 }
+
+/**
+ * Generates a new 6-digit join code for the family, replacing any existing
+ * one. The plaintext is returned exactly once here — the server only ever
+ * stores its hash (section 79), so there's no way to "look up" a
+ * previously generated code again; regenerate instead.
+ */
+export async function rotateFamilyJoinCode(familyId: string): Promise<string> {
+  const { data, error } = await supabase.rpc('rotate_family_join_code', {
+    p_family_id: familyId,
+  });
+  if (error) throw error;
+  return data as string;
+}
+
+export interface JoinCodeChild {
+  id: string;
+  name: string;
+}
+
+export interface ResolvedJoinCode {
+  familyName: string;
+  children: JoinCodeChild[];
+}
+
+interface ResolveJoinCodeRow {
+  family_id: string;
+  family_name: string;
+  child_id: string;
+  child_name: string;
+}
+
+/**
+ * Looks up what a join code resolves to — which family, and which of its
+ * children haven't been claimed by a user account yet — without joining
+ * anything. Callable by any signed-in user, including one who doesn't
+ * belong to a family yet.
+ */
+export async function resolveFamilyJoinCode(joinCode: string): Promise<ResolvedJoinCode> {
+  const { data, error } = await supabase.rpc('resolve_family_join_code', {
+    p_join_code: joinCode,
+  });
+  if (error) throw error;
+  const rows = (data ?? []) as ResolveJoinCodeRow[];
+  return {
+    familyName: rows[0]?.family_name ?? '',
+    children: rows.map((row) => ({ id: row.child_id, name: row.child_name })),
+  };
+}
+
+/**
+ * The actual join: links the signed-in user's account to a specific child
+ * within the family the code resolves to. Re-validates the code
+ * server-side rather than trusting an earlier resolveFamilyJoinCode call
+ * is still good (section 77).
+ */
+export async function joinFamilyAsChild(joinCode: string, childId: string): Promise<void> {
+  const { error } = await supabase.rpc('join_family_as_child', {
+    p_join_code: joinCode,
+    p_child_id: childId,
+  });
+  if (error) throw error;
+}

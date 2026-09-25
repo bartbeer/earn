@@ -63,6 +63,7 @@ function RootNavigator() {
           name="edit-chore/[choreId]"
           options={{ headerShown: true, headerTitle: 'Edit chore' }}
         />
+        <Stack.Screen name="join-code" options={{ headerShown: true, headerTitle: 'Join code' }} />
       </Stack.Protected>
     </Stack>
   );

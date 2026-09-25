@@ -14,8 +14,7 @@ import type { Child, RewardType } from '@/types/domain';
 
 // A short, flat settings list — no nested menus (master spec section 27).
 // Children see a minimal version: section 7 explicitly excludes them from
-// parent management functionality. Join code and Parent PIN are still
-// display-only — those features land in Phase 9.
+// parent management functionality. Parent PIN is still display-only.
 export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
   const { appState, signOut } = useAuth();
@@ -137,7 +136,7 @@ function ParentSections({ familyId }: { familyId: string }) {
       </Section>
 
       <Section title="Family">
-        <SettingsRow label="Join code" onPress={() => {}} />
+        <SettingsRow label="Join code" onPress={() => router.push('/join-code')} />
       </Section>
 
       <Section title="Security">
