@@ -1,10 +1,11 @@
-// Real Supabase reads/writes for a child's weeks. Completion now goes
-// through the set_occurrence_completion RPC (Phase 6) — payment status
-// still has no client write path (see the comments on weekly_allowances in
-// the Phase 2 migrations) until Phase 8 adds that RPC.
+// Real Supabase reads/writes for a child's weeks. Completion goes through
+// the set_occurrence_completion RPC (Phase 6); payment status goes through
+// set_week_payment_status (Phase 8) — same reasoning as completion:
+// weekly_allowances has had SELECT-only RLS since Phase 2 so a raw UPDATE
+// policy can never let a client supply its own paid_amount_cents.
 import { toISODate } from '@/lib/date';
 import { supabase } from '@/lib/supabase';
-import type { ChoreOccurrence, RewardType, WeekSummary } from '@/types/domain';
+import type { ChoreOccurrence, PaymentStatus, RewardType, WeekSummary } from '@/types/domain';
 
 interface WeeklyAllowanceRow {
   id: string;
@@ -156,6 +157,38 @@ export async function setOccurrenceCompletion(
   });
   if (error) throw error;
   return mapOccurrence(data as OccurrenceRow);
+}
+
+interface WeekPaymentUpdate {
+  paymentStatus: PaymentStatus;
+  paidAmountCents: number | null;
+}
+
+interface WeeklyAllowancePaymentRow {
+  payment_status: PaymentStatus;
+  paid_amount_cents: number | null;
+}
+
+/**
+ * Marks a week paid or not. Returns the authoritative updated fields —
+ * same reasoning as setOccurrenceCompletion: paid_amount_cents is always a
+ * fresh snapshot of the server's own earned_cents at the moment of payment
+ * (section 24), never something the caller should assume it guessed
+ * correctly. The server refuses this for a week that hasn't ended yet, and
+ * separately, set_occurrence_completion refuses to touch a paid week's
+ * occurrences — undoing payment here is the deliberate way back from that.
+ */
+export async function setWeekPaymentStatus(
+  weeklyAllowanceId: string,
+  paid: boolean,
+): Promise<WeekPaymentUpdate> {
+  const { data, error } = await supabase.rpc('set_week_payment_status', {
+    p_weekly_allowance_id: weeklyAllowanceId,
+    p_paid: paid,
+  });
+  if (error) throw error;
+  const row = data as WeeklyAllowancePaymentRow;
+  return { paymentStatus: row.payment_status, paidAmountCents: row.paid_amount_cents };
 }
 
 export async function fetchWeekById(weeklyAllowanceId: string): Promise<WeekSummary | null> {

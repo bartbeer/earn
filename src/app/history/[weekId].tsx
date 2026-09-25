@@ -5,32 +5,67 @@ import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-nat
 import { Button } from '@/components/Button';
 import { Card } from '@/components/Card';
 import { ChoreRow } from '@/components/ChoreRow';
-import { fetchWeekById } from '@/lib/api/weeks';
+import { fetchWeekById, setWeekPaymentStatus } from '@/lib/api/weeks';
 import { formatReward } from '@/lib/money';
 import { colors, spacing, typography } from '@/lib/theme';
-import type { PaymentStatus, WeekSummary } from '@/types/domain';
+import type { WeekSummary } from '@/types/domain';
 
-// Mark as paid / undo paid is UI-only in Phase 1-3 — it resets on remount.
-// Phase 8 wires this to a real backend write with a paid-amount snapshot
-// (master spec section 24: the snapshot must never change after the fact).
 export default function WeekDetailScreen() {
   const { weekId } = useLocalSearchParams<{ weekId: string }>();
   const [week, setWeek] = useState<WeekSummary | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>('not_paid');
+  const [isSavingPayment, setIsSavingPayment] = useState(false);
+  const [paymentError, setPaymentError] = useState<string | null>(null);
 
   useEffect(() => {
     let isMounted = true;
     fetchWeekById(weekId).then((result) => {
       if (!isMounted) return;
       setWeek(result);
-      if (result) setPaymentStatus(result.paymentStatus);
       setIsLoading(false);
     });
     return () => {
       isMounted = false;
     };
   }, [weekId]);
+
+  // Same optimistic-then-reconcile pattern as the Week screen's checkbox
+  // toggle: the button flips immediately, then settles on whatever the
+  // server actually snapshotted (section 24) once the request resolves, or
+  // rolls back on failure.
+  function handleTogglePayment() {
+    if (!week || isSavingPayment) return;
+    const previous = week;
+    const nextPaid = week.paymentStatus !== 'paid';
+
+    setPaymentError(null);
+    setWeek({
+      ...week,
+      paymentStatus: nextPaid ? 'paid' : 'not_paid',
+      paidAmountCents: nextPaid ? week.earnedCents : null,
+    });
+    setIsSavingPayment(true);
+
+    setWeekPaymentStatus(week.id, nextPaid)
+      .then((updated) => {
+        setWeek((current) =>
+          current
+            ? {
+                ...current,
+                paymentStatus: updated.paymentStatus,
+                paidAmountCents: updated.paidAmountCents,
+              }
+            : current,
+        );
+      })
+      .catch(() => {
+        setWeek(previous);
+        setPaymentError("Couldn't save that. Try again.");
+      })
+      .finally(() => {
+        setIsSavingPayment(false);
+      });
+  }
 
   if (isLoading) {
     return (
@@ -48,7 +83,8 @@ export default function WeekDetailScreen() {
     );
   }
 
-  const isPaid = paymentStatus === 'paid';
+  const isPaid = week.paymentStatus === 'paid';
+  const isStars = week.childRewardType === 'stars';
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
@@ -56,9 +92,9 @@ export default function WeekDetailScreen() {
         Week of {week.weekStart} – {week.weekEnd}
       </Text>
 
-      {/* Read-only here: correcting a past week's completion is a parent
-          action wired up once Phase 6/8 add the real backend + closed-week
-          rules (master spec sections 16, 48). */}
+      {/* Read-only: correcting a past week's individual completions isn't
+          part of this screen — set_occurrence_completion also refuses to
+          touch a paid week's occurrences once payment is marked. */}
       <Card style={styles.list}>
         {week.occurrences.map((occurrence) => (
           <ChoreRow
@@ -80,19 +116,23 @@ export default function WeekDetailScreen() {
         </Text>
       </View>
 
+      {paymentError ? <Text style={styles.error}>{paymentError}</Text> : null}
+
       {/* "Paid" implies real money, which doesn't fit stars — a
           non-monetary reward is "given", not "paid" (see also the History
           list screen's identically-reasoned PaymentBadge). */}
       {isPaid ? (
         <Button
-          label={week.childRewardType === 'stars' ? 'Given ✓' : 'Paid ✓'}
+          label={isSavingPayment ? 'Saving…' : isStars ? 'Given ✓' : 'Paid ✓'}
           variant="secondary"
-          onPress={() => setPaymentStatus('not_paid')}
+          onPress={handleTogglePayment}
+          disabled={isSavingPayment}
         />
       ) : (
         <Button
-          label={week.childRewardType === 'stars' ? 'Mark as given' : 'Mark as paid'}
-          onPress={() => setPaymentStatus('paid')}
+          label={isSavingPayment ? 'Saving…' : isStars ? 'Mark as given' : 'Mark as paid'}
+          onPress={handleTogglePayment}
+          disabled={isSavingPayment}
         />
       )}
     </ScrollView>
@@ -124,5 +164,9 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: '500',
     color: colors.textSecondary,
+  },
+  error: {
+    color: '#B3261E',
+    fontSize: 14,
   },
 });
