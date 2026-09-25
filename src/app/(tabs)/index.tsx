@@ -50,7 +50,7 @@ export default function WeekScreen() {
   useEffect(() => {
     if (!isParent || children.length <= 1) return;
     let isMounted = true;
-    Promise.all(
+    Promise.allSettled(
       children.map(async (child) => {
         const week = await fetchCurrentWeek(child.id, familyId);
         return {
@@ -60,13 +60,30 @@ export default function WeekScreen() {
           maximumCents: week?.maximumCents ?? 0,
         };
       }),
-    ).then((summaries) => {
-      if (isMounted) setSwitcherSummaries(summaries);
+    ).then((results) => {
+      if (!isMounted) return;
+      // allSettled, not all: one child's fetch failing (e.g. a removal
+      // mid-flight) shouldn't blank out everyone else's chip.
+      const summaries = results
+        .filter((result) => result.status === 'fulfilled')
+        .map((result) => result.value);
+      setSwitcherSummaries(summaries);
     });
     return () => {
       isMounted = false;
     };
   }, [isParent, children, familyId]);
+
+  // switcherSummaries is populated by its own async fetch (above), which is
+  // slower than the children list itself — so a just-removed child can
+  // briefly still be sitting in switcherSummaries after `children` (and
+  // therefore selectedChildId) has already moved on without them. Filtering
+  // here, synchronously at render time, means the switcher never shows a
+  // dangling, tappable chip for a child who no longer exists, regardless of
+  // whether the slower summaries refetch has caught up yet.
+  const visibleSwitcherSummaries = switcherSummaries.filter((summary) =>
+    children.some((child) => child.id === summary.id),
+  );
 
   const [week, setWeek] = useState<WeekSummary | null>(null);
   const [isLoadingWeek, setIsLoadingWeek] = useState(true);
@@ -179,7 +196,7 @@ export default function WeekScreen() {
 
       {isParent && children.length > 1 && selectedChildId ? (
         <ChildSwitcher
-          items={switcherSummaries}
+          items={visibleSwitcherSummaries}
           selectedId={selectedChildId}
           onSelect={setExplicitChildId}
         />

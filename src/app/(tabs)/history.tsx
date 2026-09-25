@@ -46,7 +46,7 @@ export default function HistoryScreen() {
     useCallback(() => {
       if (!isParent || children.length <= 1) return;
       let isMounted = true;
-      Promise.all(
+      Promise.allSettled(
         children.map(async (child) => {
           const week = await fetchCurrentWeek(child.id, familyId);
           return {
@@ -56,13 +56,28 @@ export default function HistoryScreen() {
             maximumCents: week?.maximumCents ?? 0,
           };
         }),
-      ).then((summaries) => {
-        if (isMounted) setSwitcherSummaries(summaries);
+      ).then((results) => {
+        if (!isMounted) return;
+        // allSettled, not all: one child's fetch failing (e.g. a removal
+        // mid-flight) shouldn't blank out everyone else's chip.
+        const summaries = results
+          .filter((result) => result.status === 'fulfilled')
+          .map((result) => result.value);
+        setSwitcherSummaries(summaries);
       });
       return () => {
         isMounted = false;
       };
     }, [isParent, children, familyId]),
+  );
+
+  // See index.tsx's identical comment: switcherSummaries lags behind
+  // `children` (its own slower async fetch), so filter against the current
+  // children list at render time rather than trusting summaries alone —
+  // otherwise a removed child's chip can keep showing, and stay tappable,
+  // until that slower refetch eventually catches up.
+  const visibleSwitcherSummaries = switcherSummaries.filter((summary) =>
+    children.some((child) => child.id === summary.id),
   );
 
   const [weeks, setWeeks] = useState<WeekSummary[]>([]);
@@ -98,7 +113,7 @@ export default function HistoryScreen() {
 
       {isParent && children.length > 1 && selectedChildId ? (
         <ChildSwitcher
-          items={switcherSummaries}
+          items={visibleSwitcherSummaries}
           selectedId={selectedChildId}
           onSelect={setExplicitChildId}
         />
