@@ -4,8 +4,13 @@ import { ChoreForm } from '@/components/ChoreForm';
 import type { Child } from '@/types/domain';
 
 const childOptions: Child[] = [
-  { id: 'child-1', name: 'Emma' },
-  { id: 'child-2', name: 'Lucas' },
+  { id: 'child-1', name: 'Emma', rewardType: 'currency' },
+  { id: 'child-2', name: 'Lucas', rewardType: 'currency' },
+];
+
+const mixedRewardTypeChildOptions: Child[] = [
+  { id: 'child-1', name: 'Emma', rewardType: 'currency' },
+  { id: 'child-3', name: 'Star Kid', rewardType: 'stars' },
 ];
 
 async function press(label: string, byRole: 'text' | 'label' = 'text') {
@@ -99,6 +104,71 @@ describe('ChoreForm', () => {
       name: 'Room tidy',
       childId: 'child-2',
       amountCents: 250,
+      recurrenceType: 'once_weekly',
+      scheduleDays: [6],
+    });
+  });
+});
+
+// Extra feature: a child can earn stars instead of euros — the amount
+// field's label, validation, and parsing must follow whichever child is
+// currently selected, not always assume currency.
+describe('ChoreForm with a stars child', () => {
+  it('labels the amount field in stars once a stars child is selected', async () => {
+    const onSubmit = jest.fn();
+    await render(
+      <ChoreForm
+        childOptions={mixedRewardTypeChildOptions}
+        submitLabel="Add chore"
+        onSubmit={onSubmit}
+      />,
+    );
+
+    await press('Star Kid');
+
+    expect(screen.getByLabelText('Amount per completion (stars)')).toBeTruthy();
+  });
+
+  it('rejects a decimal amount for a stars child', async () => {
+    const onSubmit = jest.fn();
+    await render(
+      <ChoreForm
+        childOptions={mixedRewardTypeChildOptions}
+        submitLabel="Add chore"
+        onSubmit={onSubmit}
+      />,
+    );
+
+    await changeText('Chore name', 'Room tidy');
+    await press('Star Kid');
+    await changeText('Amount per completion (stars)', '2.5');
+    await press('Saturday', 'label');
+    await press('Add chore');
+
+    expect(screen.getByText('Enter a valid whole number of stars, up to 1000.')).toBeTruthy();
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it('submits a whole star count for a stars child', async () => {
+    const onSubmit = jest.fn().mockResolvedValue(undefined);
+    await render(
+      <ChoreForm
+        childOptions={mixedRewardTypeChildOptions}
+        submitLabel="Add chore"
+        onSubmit={onSubmit}
+      />,
+    );
+
+    await changeText('Chore name', 'Room tidy');
+    await press('Star Kid');
+    await changeText('Amount per completion (stars)', '3');
+    await press('Saturday', 'label');
+    await press('Add chore');
+
+    expect(onSubmit).toHaveBeenCalledWith({
+      name: 'Room tidy',
+      childId: 'child-3',
+      amountCents: 3,
       recurrenceType: 'once_weekly',
       scheduleDays: [6],
     });

@@ -3,9 +3,16 @@ import { useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Button } from '@/components/Button';
+import { Chip } from '@/components/Chip';
 import { TextField } from '@/components/TextField';
 import { useAuth } from '@/lib/auth/AuthProvider';
 import { colors, spacing, typography } from '@/lib/theme';
+import type { RewardType } from '@/types/domain';
+
+const REWARD_TYPE_OPTIONS: { value: RewardType; label: string }[] = [
+  { value: 'currency', label: 'Euros' },
+  { value: 'stars', label: 'Stars' },
+];
 
 // Reachable any time a parent is signed in — right after creating a family
 // (via the Week screen's "Add your first child" empty state, section 88)
@@ -15,6 +22,10 @@ import { colors, spacing, typography } from '@/lib/theme';
 export default function AddChildScreen() {
   const { addChild } = useAuth();
   const [name, setName] = useState('');
+  // Some parents don't want a younger child working for real money — stars
+  // is a purely non-monetary alternative. Changeable later from Settings,
+  // but only until the child has a chore (see the reward-type migration).
+  const [rewardType, setRewardType] = useState<RewardType>('currency');
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -24,7 +35,7 @@ export default function AddChildScreen() {
     setError(null);
     setIsSubmitting(true);
     try {
-      await addChild(trimmed);
+      await addChild(trimmed, rewardType);
       router.back();
     } catch {
       setError("Couldn't add that child. Try again.");
@@ -42,6 +53,20 @@ export default function AddChildScreen() {
 
         <View style={styles.form}>
           <TextField label="Name" value={name} onChangeText={setName} autoFocus />
+
+          <View style={styles.field}>
+            <Text style={typography.secondaryMeta}>Earns</Text>
+            <View style={styles.chipRow}>
+              {REWARD_TYPE_OPTIONS.map((option) => (
+                <Chip
+                  key={option.value}
+                  label={option.label}
+                  selected={option.value === rewardType}
+                  onPress={() => setRewardType(option.value)}
+                />
+              ))}
+            </View>
+          </View>
 
           {error ? <Text style={styles.error}>{error}</Text> : null}
 
@@ -69,6 +94,14 @@ const styles = StyleSheet.create({
   },
   form: {
     gap: spacing.lg,
+  },
+  field: {
+    gap: spacing.xs,
+  },
+  chipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
   },
   error: {
     color: '#B3261E',

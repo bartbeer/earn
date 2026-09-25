@@ -1,13 +1,14 @@
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 
 import { Button } from '@/components/Button';
+import { Chip } from '@/components/Chip';
 import { TextField } from '@/components/TextField';
 import { WeekdayPicker } from '@/components/WeekdayPicker';
-import { isValidChoreAmountCents, parseEuroAmountToCents } from '@/lib/money';
+import { isValidRewardAmount, MAX_STARS_AMOUNT, parseRewardAmount } from '@/lib/money';
 import { validateSchedule } from '@/lib/schedule';
-import { colors, minTouchTarget, radii, spacing, typography } from '@/lib/theme';
-import type { Child, RecurrenceType } from '@/types/domain';
+import { spacing, typography } from '@/lib/theme';
+import type { Child, RecurrenceType, RewardType } from '@/types/domain';
 
 const RECURRENCE_OPTIONS: { value: RecurrenceType; label: string }[] = [
   { value: 'once_weekly', label: 'Weekly' },
@@ -50,9 +51,21 @@ export function ChoreForm({
   const [childId, setChildId] = useState(
     initialValues?.childId ?? (childOptions.length === 1 ? childOptions[0].id : ''),
   );
-  const [amountText, setAmountText] = useState(
-    initialValues?.amountCents !== undefined ? (initialValues.amountCents / 100).toFixed(2) : '',
-  );
+  // A chore's child is only ever chosen at creation — updateChore() never
+  // sends childId, so editing never actually reassigns it. Not offering the
+  // picker here (rather than showing inert chips) avoids the confusing
+  // combination of "tap a different child" with "nothing happens, but the
+  // amount field's unit below silently relabels itself as if it had".
+  const isEditing = initialValues?.childId !== undefined;
+  const rewardType: RewardType =
+    childOptions.find((child) => child.id === childId)?.rewardType ?? 'currency';
+
+  const [amountText, setAmountText] = useState(() => {
+    if (initialValues?.amountCents === undefined) return '';
+    return rewardType === 'stars'
+      ? String(initialValues.amountCents)
+      : (initialValues.amountCents / 100).toFixed(2);
+  });
   const [recurrenceType, setRecurrenceType] = useState<RecurrenceType>(
     initialValues?.recurrenceType ?? 'once_weekly',
   );
@@ -72,9 +85,13 @@ export function ChoreForm({
   async function handleSubmit() {
     setError(null);
 
-    const amountCents = parseEuroAmountToCents(amountText);
-    if (amountCents === null || !isValidChoreAmountCents(amountCents)) {
-      setError('Enter a valid amount, up to €1,000.');
+    const amountCents = parseRewardAmount(amountText, rewardType);
+    if (amountCents === null || !isValidRewardAmount(amountCents, rewardType)) {
+      setError(
+        rewardType === 'stars'
+          ? `Enter a valid whole number of stars, up to ${MAX_STARS_AMOUNT}.`
+          : 'Enter a valid amount, up to €1,000.',
+      );
       return;
     }
     if (!childId) {
@@ -101,7 +118,7 @@ export function ChoreForm({
     <View style={styles.form}>
       <TextField label="Chore name" value={name} onChangeText={setName} autoFocus />
 
-      {childOptions.length > 1 ? (
+      {!isEditing && childOptions.length > 1 ? (
         <View style={styles.field}>
           <Text style={typography.secondaryMeta}>Child</Text>
           <View style={styles.chipRow}>
@@ -118,11 +135,11 @@ export function ChoreForm({
       ) : null}
 
       <TextField
-        label="Amount per completion (€)"
+        label={rewardType === 'stars' ? 'Amount per completion (stars)' : 'Amount per completion (€)'}
         value={amountText}
         onChangeText={setAmountText}
-        keyboardType="decimal-pad"
-        placeholder="0.00"
+        keyboardType={rewardType === 'stars' ? 'number-pad' : 'decimal-pad'}
+        placeholder={rewardType === 'stars' ? '0' : '0.00'}
       />
 
       <View style={styles.field}>
@@ -158,27 +175,6 @@ export function ChoreForm({
   );
 }
 
-function Chip({
-  label,
-  selected,
-  onPress,
-}: {
-  label: string;
-  selected: boolean;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="radio"
-      accessibilityState={{ selected }}
-      style={[styles.chip, selected && styles.chipSelected]}
-    >
-      <Text style={[typography.taskName, selected && styles.chipLabelSelected]}>{label}</Text>
-    </Pressable>
-  );
-}
-
 const styles = StyleSheet.create({
   form: {
     gap: spacing.lg,
@@ -190,23 +186,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: spacing.sm,
-  },
-  chip: {
-    minHeight: minTouchTarget,
-    paddingHorizontal: spacing.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: radii.pill,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-  },
-  chipSelected: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
-  },
-  chipLabelSelected: {
-    color: colors.surface,
   },
   error: {
     color: '#B3261E',

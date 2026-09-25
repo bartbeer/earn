@@ -58,6 +58,7 @@ function weekFor(childId: string, choreName: string): WeekSummary {
   return {
     id: `week-${childId}`,
     childId,
+    childRewardType: 'currency',
     weekStart: '2026-01-01',
     weekEnd: '2026-01-07',
     maximumCents: 100,
@@ -80,8 +81,8 @@ function weekFor(childId: string, choreName: string): WeekSummary {
 
 beforeEach(() => {
   mockChildren = [
-    { id: 'child-1', name: 'Emma' },
-    { id: 'child-2', name: 'Timmy' },
+    { id: 'child-1', name: 'Emma', rewardType: 'currency' },
+    { id: 'child-2', name: 'Timmy', rewardType: 'currency' },
   ];
   mockedFetchCurrentWeek.mockReset();
   mockedFetchCurrentWeek.mockImplementation(async (childId) =>
@@ -109,7 +110,7 @@ describe('WeekScreen child switching after a removal', () => {
     await waitFor(() => expect(screen.getByText("Timmy's chore")).toBeTruthy());
 
     // Timmy gets removed — the children list no longer includes him.
-    mockChildren = [{ id: 'child-1', name: 'Emma' }];
+    mockChildren = [{ id: 'child-1', name: 'Emma', rewardType: 'currency' }];
     await act(async () => {
       rerender(withSafeArea(<WeekScreen />));
     });
@@ -130,9 +131,9 @@ describe('WeekScreen child switching after a removal', () => {
   // that no longer exists in the meantime.
   it("hides a removed child's chip as soon as the children list drops them, without waiting for switcher summaries to refetch", async () => {
     mockChildren = [
-      { id: 'child-1', name: 'Emma' },
-      { id: 'child-2', name: 'Timmy' },
-      { id: 'child-3', name: 'Tom' },
+      { id: 'child-1', name: 'Emma', rewardType: 'currency' },
+      { id: 'child-2', name: 'Timmy', rewardType: 'currency' },
+      { id: 'child-3', name: 'Tom', rewardType: 'currency' },
     ];
 
     const pending = new Map<string, Array<(week: WeekSummary) => void>>();
@@ -164,8 +165,8 @@ describe('WeekScreen child switching after a removal', () => {
     // refetch still being in flight.
     pending.clear();
     mockChildren = [
-      { id: 'child-1', name: 'Emma' },
-      { id: 'child-2', name: 'Timmy' },
+      { id: 'child-1', name: 'Emma', rewardType: 'currency' },
+      { id: 'child-2', name: 'Timmy', rewardType: 'currency' },
     ];
     await act(async () => {
       rerender(withSafeArea(<WeekScreen />));

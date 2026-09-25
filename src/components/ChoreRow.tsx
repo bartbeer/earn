@@ -1,12 +1,14 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Checkbox } from '@/components/Checkbox';
-import { formatCurrency } from '@/lib/money';
+import { formatReward } from '@/lib/money';
 import { colors, minTouchTarget, spacing, typography } from '@/lib/theme';
+import type { RewardType } from '@/types/domain';
 
 interface ChoreRowProps {
   name: string;
   amountCents: number;
+  rewardType?: RewardType;
   completed: boolean;
   onToggle: () => void;
   /** True while this occurrence's toggle is already in flight (double-tap protection). */
@@ -18,8 +20,15 @@ interface ChoreRowProps {
  * tappable (not just the checkbox) so it's an easy target for young children
  * (master spec sections 13, 31).
  */
-export function ChoreRow({ name, amountCents, completed, onToggle, disabled }: ChoreRowProps) {
-  const label = `${name}, ${formatCurrency(amountCents)}, ${completed ? 'completed' : 'not completed'}`;
+export function ChoreRow({
+  name,
+  amountCents,
+  rewardType = 'currency',
+  completed,
+  onToggle,
+  disabled,
+}: ChoreRowProps) {
+  const label = `${name}, ${formatReward(amountCents, rewardType)}, ${completed ? 'completed' : 'not completed'}`;
 
   return (
     // accessible={false}: the inner Checkbox already exposes the full
@@ -38,7 +47,7 @@ export function ChoreRow({ name, amountCents, completed, onToggle, disabled }: C
         </Text>
       </View>
       <Text style={[typography.taskAmount, completed && styles.completedAmount]}>
-        {formatCurrency(amountCents)}
+        {formatReward(amountCents, rewardType)}
       </Text>
     </Pressable>
   );

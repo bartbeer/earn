@@ -9,10 +9,10 @@ import { EmptyState } from '@/components/EmptyState';
 import { useFamilyChildren } from '@/hooks/useFamilyChildren';
 import { fetchChores } from '@/lib/api/chores';
 import { useAuth } from '@/lib/auth/AuthProvider';
-import { formatCurrency } from '@/lib/money';
+import { formatReward } from '@/lib/money';
 import { describeSchedule } from '@/lib/schedule';
 import { colors, minTouchTarget, spacing, typography } from '@/lib/theme';
-import type { Chore } from '@/types/domain';
+import type { Chore, RewardType } from '@/types/domain';
 
 // Parent-only chore management (master spec section 28). Reachable from
 // Settings > Chores > Manage chores.
@@ -44,6 +44,9 @@ export default function ManageChoresScreen() {
   );
 
   const childNameById = Object.fromEntries(children.map((child) => [child.id, child.name]));
+  const childRewardTypeById: Record<string, RewardType> = Object.fromEntries(
+    children.map((child) => [child.id, child.rewardType]),
+  );
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
@@ -61,7 +64,9 @@ export default function ManageChoresScreen() {
                     {describeSchedule(chore.recurrenceType, chore.scheduleDays)}
                   </Text>
                 </View>
-                <Text style={typography.taskAmount}>{formatCurrency(chore.amountCents)}</Text>
+                <Text style={typography.taskAmount}>
+                  {formatReward(chore.amountCents, childRewardTypeById[chore.childId] ?? 'currency')}
+                </Text>
                 <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
               </Card>
             </Pressable>

@@ -3,7 +3,7 @@
 // user's own session, and RLS (see supabase/migrations) is the actual
 // authorization boundary, not this file.
 import { supabase } from '@/lib/supabase';
-import type { Child, Membership } from '@/types/domain';
+import type { Child, Membership, RewardType } from '@/types/domain';
 
 interface MembershipRow {
   family_id: string;
@@ -65,25 +65,57 @@ export async function createFamily(name: string, userId: string): Promise<Member
   return { familyId: family.id, familyName: family.name, role: 'parent', childId: null };
 }
 
+interface ChildRow {
+  id: string;
+  name: string;
+  reward_type: RewardType;
+}
+
+function mapChild(row: ChildRow): Child {
+  return { id: row.id, name: row.name, rewardType: row.reward_type };
+}
+
 export async function fetchChildren(familyId: string): Promise<Child[]> {
   const { data, error } = await supabase
     .from('children')
-    .select('id, name')
+    .select('id, name, reward_type')
     .eq('family_id', familyId)
     .eq('active', true)
     .order('name');
   if (error) throw error;
-  return data ?? [];
+  return (data ?? []).map(mapChild);
 }
 
-export async function addChild(familyId: string, name: string): Promise<Child> {
+export async function addChild(
+  familyId: string,
+  name: string,
+  rewardType: RewardType,
+): Promise<Child> {
   const { data, error } = await supabase
     .from('children')
-    .insert({ family_id: familyId, name })
-    .select('id, name')
+    .insert({ family_id: familyId, name, reward_type: rewardType })
+    .select('id, name, reward_type')
     .single();
   if (error) throw error;
-  return data;
+  return mapChild(data);
+}
+
+/**
+ * Changes a child's reward type. The server rejects this once the child has
+ * any chore (see the reward-type migration's guard trigger) — there's no
+ * safe way to reinterpret an already-recorded amount_cents across a unit
+ * change, so the caller should expect this to throw in that case and show a
+ * clear explanation rather than a generic error.
+ */
+export async function updateChildRewardType(
+  childId: string,
+  rewardType: RewardType,
+): Promise<void> {
+  const { error } = await supabase
+    .from('children')
+    .update({ reward_type: rewardType })
+    .eq('id', childId);
+  if (error) throw error;
 }
 
 /**

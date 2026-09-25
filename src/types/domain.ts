@@ -20,9 +20,20 @@ export interface Membership {
 
 export type OccurrenceStatus = 'pending' | 'completed';
 
+/**
+ * Whether a child's amount_cents columns mean euro cents or whole stars —
+ * some parents don't want a younger child working for real money at all.
+ * Set per child, not per family, since siblings might use different units.
+ * Locked server-side once the child has any chore (see the reward-type
+ * migration) — history in one unit is never silently reinterpreted as the
+ * other.
+ */
+export type RewardType = 'currency' | 'stars';
+
 export interface Child {
   id: string;
   name: string;
+  rewardType: RewardType;
 }
 
 export type RecurrenceType = 'once_weekly' | 'selected_days' | 'daily';
@@ -58,6 +69,8 @@ export type PaymentStatus = 'not_paid' | 'paid';
 export interface WeekSummary {
   id: string;
   childId: string;
+  /** The owning child's reward type, carried alongside the week itself so a standalone deep-linked screen (e.g. history/[weekId]) never needs a separate children-list fetch just to know which unit to display. */
+  childRewardType: RewardType;
   weekStart: string; // ISO date, Monday
   weekEnd: string; // ISO date, Sunday
   maximumCents: number;

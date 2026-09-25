@@ -37,7 +37,7 @@ describe('AddChildScreen', () => {
       fireEvent.press(screen.getByText('Add child'));
     });
 
-    expect(mockAddChild).toHaveBeenCalledWith('Tom');
+    expect(mockAddChild).toHaveBeenCalledWith('Tom', 'currency');
     expect(mockBack).toHaveBeenCalledTimes(1);
   });
 
@@ -54,5 +54,38 @@ describe('AddChildScreen', () => {
 
     expect(screen.getByText("Couldn't add that child. Try again.")).toBeTruthy();
     expect(mockBack).not.toHaveBeenCalled();
+  });
+
+  // Extra feature: some parents don't want a younger child working for
+  // real money — stars is a non-monetary alternative, chosen at add time.
+  it('adds the child with the stars reward type once selected', async () => {
+    mockAddChild.mockResolvedValue(undefined);
+    await render(withSafeArea(<AddChildScreen />));
+
+    await act(async () => {
+      fireEvent.changeText(screen.getByLabelText('Name'), 'Tom');
+    });
+    await act(async () => {
+      fireEvent.press(screen.getByText('Stars'));
+    });
+    await act(async () => {
+      fireEvent.press(screen.getByText('Add child'));
+    });
+
+    expect(mockAddChild).toHaveBeenCalledWith('Tom', 'stars');
+  });
+
+  it('defaults to euros without any selection', async () => {
+    mockAddChild.mockResolvedValue(undefined);
+    await render(withSafeArea(<AddChildScreen />));
+
+    await act(async () => {
+      fireEvent.changeText(screen.getByLabelText('Name'), 'Tom');
+    });
+    await act(async () => {
+      fireEvent.press(screen.getByText('Add child'));
+    });
+
+    expect(mockAddChild).toHaveBeenCalledWith('Tom', 'currency');
   });
 });

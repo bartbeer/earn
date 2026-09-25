@@ -8,9 +8,9 @@ import { Divider } from '@/components/Divider';
 import { SettingsRow } from '@/components/SettingsRow';
 import { useFamilyChildren } from '@/hooks/useFamilyChildren';
 import { useAuth } from '@/lib/auth/AuthProvider';
-import { deactivateChild } from '@/lib/api/family';
+import { deactivateChild, updateChildRewardType } from '@/lib/api/family';
 import { colors, spacing, typography } from '@/lib/theme';
-import type { Child } from '@/types/domain';
+import type { Child, RewardType } from '@/types/domain';
 
 // A short, flat settings list — no nested menus (master spec section 27).
 // Children see a minimal version: section 7 explicitly excludes them from
@@ -46,12 +46,36 @@ export default function SettingsScreen() {
 function ParentSections({ familyId }: { familyId: string }) {
   const { children, refetch } = useFamilyChildren(familyId);
 
-  function confirmRemove(child: Child) {
+  function rewardTypeLabel(rewardType: RewardType) {
+    return rewardType === 'stars' ? 'Stars' : 'Euros';
+  }
+
+  async function handleSwitchRewardType(child: Child) {
+    const nextRewardType: RewardType = child.rewardType === 'stars' ? 'currency' : 'stars';
+    try {
+      await updateChildRewardType(child.id, nextRewardType);
+      refetch();
+    } catch {
+      // The server locks this once the child has any chore (see the
+      // reward-type migration) — there's no safe way to reinterpret an
+      // already-recorded amount in the other unit.
+      Alert.alert(
+        "Can't change this",
+        `${child.name} already has chores set up, so switching between euros and stars isn't available anymore.`,
+      );
+    }
+  }
+
+  function confirmChildAction(child: Child) {
     // A confirmation here is deliberate even though section 15 says not to
     // add one for routine actions like checking off a chore — removing a
     // child is a rare, hard-to-notice-if-reversed action, not a checkbox.
-    Alert.alert(`Remove ${child.name}?`, "They'll no longer appear in the app.", [
+    Alert.alert(child.name, `Currently earns ${rewardTypeLabel(child.rewardType).toLowerCase()}.`, [
       { text: 'Cancel', style: 'cancel' },
+      {
+        text: child.rewardType === 'stars' ? 'Switch to Euros' : 'Switch to Stars',
+        onPress: () => handleSwitchRewardType(child),
+      },
       {
         text: 'Remove',
         style: 'destructive',
@@ -72,7 +96,11 @@ function ParentSections({ familyId }: { familyId: string }) {
       <Section title="Children">
         {children.map((child) => (
           <View key={child.id}>
-            <SettingsRow label={child.name} onPress={() => confirmRemove(child)} />
+            <SettingsRow
+              label={child.name}
+              value={rewardTypeLabel(child.rewardType)}
+              onPress={() => confirmChildAction(child)}
+            />
             <Divider />
           </View>
         ))}

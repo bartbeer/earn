@@ -4,7 +4,7 @@
 // the Phase 2 migrations) until Phase 8 adds that RPC.
 import { toISODate } from '@/lib/date';
 import { supabase } from '@/lib/supabase';
-import type { ChoreOccurrence, WeekSummary } from '@/types/domain';
+import type { ChoreOccurrence, RewardType, WeekSummary } from '@/types/domain';
 
 interface WeeklyAllowanceRow {
   id: string;
@@ -15,6 +15,10 @@ interface WeeklyAllowanceRow {
   earned_cents: number;
   payment_status: 'not_paid' | 'paid';
   paid_amount_cents: number | null;
+  // Embedded join, not a duplicated column — see mapWeekRow. Typed as
+  // possibly-array like family.ts's `families` embed: the JS client's type
+  // depends on how the relationship was inferred.
+  children: { reward_type: RewardType } | { reward_type: RewardType }[] | null;
 }
 
 interface OccurrenceRow {
@@ -58,9 +62,11 @@ async function fetchOccurrencesForWeek(
 }
 
 function mapWeekRow(row: WeeklyAllowanceRow, occurrences: ChoreOccurrence[]): WeekSummary {
+  const child = Array.isArray(row.children) ? row.children[0] : row.children;
   return {
     id: row.id,
     childId: row.child_id,
+    childRewardType: child?.reward_type ?? 'currency',
     weekStart: row.week_start,
     weekEnd: row.week_end,
     maximumCents: row.maximum_cents,
@@ -72,7 +78,7 @@ function mapWeekRow(row: WeeklyAllowanceRow, occurrences: ChoreOccurrence[]): We
 }
 
 const WEEKLY_ALLOWANCE_COLUMNS =
-  'id, child_id, week_start, week_end, maximum_cents, earned_cents, payment_status, paid_amount_cents';
+  'id, child_id, week_start, week_end, maximum_cents, earned_cents, payment_status, paid_amount_cents, children(reward_type)';
 
 /**
  * Ensures this week's occurrences exist for a family before reading them —

@@ -48,6 +48,7 @@ function makeWeek(overrides: Partial<WeekSummary>): WeekSummary {
   return {
     id: 'week-x',
     childId: 'child-1',
+    childRewardType: 'currency',
     weekStart: '2026-09-07',
     weekEnd: '2026-09-13',
     maximumCents: 500,
@@ -83,5 +84,25 @@ describe('HistoryScreen', () => {
     await render(withSafeArea(<HistoryScreen />));
 
     await waitFor(() => expect(screen.getByText('No previous weeks yet.')).toBeTruthy());
+  });
+
+  // Extra feature: "paid" implies real money, which doesn't fit a stars
+  // child — the badge and totals should read in stars instead.
+  it("shows a stars child's weeks in stars, with 'given' instead of 'paid'", async () => {
+    mockedFetchWeekHistory.mockResolvedValue([
+      makeWeek({
+        id: 'week-star',
+        childRewardType: 'stars',
+        earnedCents: 5,
+        maximumCents: 8,
+        paymentStatus: 'paid',
+        paidAmountCents: 5,
+      }),
+    ]);
+
+    await render(withSafeArea(<HistoryScreen />));
+
+    await waitFor(() => expect(screen.getByText('5 ⭐ / 8 ⭐')).toBeTruthy());
+    expect(screen.getByText('Given')).toBeTruthy();
   });
 });

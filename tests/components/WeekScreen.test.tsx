@@ -62,6 +62,7 @@ const roomTidy: ChoreOccurrence = {
 const sampleWeek: WeekSummary = {
   id: 'week-1',
   childId: 'child-1',
+  childRewardType: 'currency',
   weekStart: todayISO,
   weekEnd: todayISO,
   maximumCents: 300,

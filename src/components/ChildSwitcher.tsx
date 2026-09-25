@@ -1,13 +1,15 @@
 import { Pressable, ScrollView, StyleSheet, Text } from 'react-native';
 
-import { formatCurrency } from '@/lib/money';
+import { formatReward } from '@/lib/money';
 import { colors, minTouchTarget, radii, spacing, typography } from '@/lib/theme';
+import type { RewardType } from '@/types/domain';
 
 export interface ChildSwitcherItem {
   id: string;
   name: string;
   earnedCents: number;
   maximumCents: number;
+  rewardType: RewardType;
 }
 
 interface ChildSwitcherProps {
@@ -38,7 +40,8 @@ export function ChildSwitcher({ items, selectedId, onSelect }: ChildSwitcherProp
           >
             <Text style={[styles.name, selected && styles.nameSelected]}>{child.name}</Text>
             <Text style={[styles.amount, selected && styles.nameSelected]}>
-              {formatCurrency(child.earnedCents)} / {formatCurrency(child.maximumCents)}
+              {formatReward(child.earnedCents, child.rewardType)} /{' '}
+              {formatReward(child.maximumCents, child.rewardType)}
             </Text>
           </Pressable>
         );

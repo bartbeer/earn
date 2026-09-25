@@ -10,9 +10,9 @@ import { EmptyState } from '@/components/EmptyState';
 import { useFamilyChildren } from '@/hooks/useFamilyChildren';
 import { useAuth } from '@/lib/auth/AuthProvider';
 import { fetchCurrentWeek, fetchWeekHistory } from '@/lib/api/weeks';
-import { formatCurrency } from '@/lib/money';
+import { formatReward } from '@/lib/money';
 import { colors, minTouchTarget, spacing, typography } from '@/lib/theme';
-import type { WeekSummary } from '@/types/domain';
+import type { RewardType, WeekSummary } from '@/types/domain';
 
 // History shows only "what happened that week" — no graphs, no scores
 // (master spec section 25).
@@ -54,6 +54,7 @@ export default function HistoryScreen() {
             name: child.name,
             earnedCents: week?.earnedCents ?? 0,
             maximumCents: week?.maximumCents ?? 0,
+            rewardType: child.rewardType,
           };
         }),
       ).then((results) => {
@@ -128,16 +129,17 @@ export default function HistoryScreen() {
               key={week.id}
               onPress={() => router.push(`/history/${week.id}`)}
               accessibilityRole="button"
-              accessibilityLabel={`Week of ${week.weekStart}, ${formatCurrency(week.earnedCents)} of ${formatCurrency(week.maximumCents)}, ${week.paymentStatus === 'paid' ? 'paid' : 'not paid'}`}
+              accessibilityLabel={`Week of ${week.weekStart}, ${formatReward(week.earnedCents, week.childRewardType)} of ${formatReward(week.maximumCents, week.childRewardType)}, ${paymentStatusLabel(week.paymentStatus === 'paid', week.childRewardType)}`}
             >
               <Card style={styles.weekCard}>
                 <View style={styles.weekInfo}>
                   <Text style={typography.taskName}>Week of {week.weekStart}</Text>
                   <Text style={typography.secondaryMeta}>
-                    {formatCurrency(week.earnedCents)} / {formatCurrency(week.maximumCents)}
+                    {formatReward(week.earnedCents, week.childRewardType)} /{' '}
+                    {formatReward(week.maximumCents, week.childRewardType)}
                   </Text>
                 </View>
-                <PaymentBadge paid={week.paymentStatus === 'paid'} />
+                <PaymentBadge paid={week.paymentStatus === 'paid'} rewardType={week.childRewardType} />
                 <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
               </Card>
             </Pressable>
@@ -148,12 +150,25 @@ export default function HistoryScreen() {
   );
 }
 
-function PaymentBadge({ paid }: { paid: boolean }) {
+// "Paid" implies real money, which doesn't fit stars — a non-monetary
+// reward is "given", not "paid".
+function paymentStatusLabel(paid: boolean, rewardType: RewardType): string {
+  if (rewardType === 'stars') return paid ? 'given' : 'not given';
+  return paid ? 'paid' : 'not paid';
+}
+
+function PaymentBadge({ paid, rewardType }: { paid: boolean; rewardType: RewardType }) {
   return (
     <View style={styles.badgeRow}>
       {paid ? <Ionicons name="checkmark-circle" size={16} color={colors.primary} /> : null}
       <Text style={[typography.secondaryMeta, paid && styles.paidLabel]}>
-        {paid ? 'Paid' : 'Not paid'}
+        {rewardType === 'stars'
+          ? paid
+            ? 'Given'
+            : 'Not given'
+          : paid
+            ? 'Paid'
+            : 'Not paid'}
       </Text>
     </View>
   );

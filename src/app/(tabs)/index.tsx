@@ -13,9 +13,9 @@ import { useFamilyChildren } from '@/hooks/useFamilyChildren';
 import { useAuth } from '@/lib/auth/AuthProvider';
 import { isOccurrenceToday, toISODate } from '@/lib/date';
 import { fetchCurrentWeek, setOccurrenceCompletion } from '@/lib/api/weeks';
-import { calculateEarnedCents, formatCurrency } from '@/lib/money';
+import { calculateEarnedCents, formatReward } from '@/lib/money';
 import { colors, spacing, typography } from '@/lib/theme';
-import type { ChoreOccurrence, WeekSummary } from '@/types/domain';
+import type { ChoreOccurrence, RewardType, WeekSummary } from '@/types/domain';
 
 export default function WeekScreen() {
   const { appState } = useAuth();
@@ -58,6 +58,7 @@ export default function WeekScreen() {
           name: child.name,
           earnedCents: week?.earnedCents ?? 0,
           maximumCents: week?.maximumCents ?? 0,
+          rewardType: child.rewardType,
         };
       }),
     ).then((results) => {
@@ -186,6 +187,7 @@ export default function WeekScreen() {
 
   const todayISO = toISODate(new Date());
   const sections = week ? groupOccurrencesByStatus(week.occurrences, todayISO) : null;
+  const rewardType: RewardType = week?.childRewardType ?? 'currency';
 
   return (
     <ScrollView
@@ -205,8 +207,8 @@ export default function WeekScreen() {
       <View style={styles.earnedBlock}>
         <Text style={typography.secondaryMeta}>Earned</Text>
         <Text style={typography.primaryNumber}>
-          {formatCurrency(week?.earnedCents ?? 0)}{' '}
-          <Text style={styles.maximum}>/ {formatCurrency(week?.maximumCents ?? 0)}</Text>
+          {formatReward(week?.earnedCents ?? 0, rewardType)}{' '}
+          <Text style={styles.maximum}>/ {formatReward(week?.maximumCents ?? 0, rewardType)}</Text>
         </Text>
         <ProgressBar
           progress={!week || week.maximumCents === 0 ? 0 : week.earnedCents / week.maximumCents}
@@ -225,18 +227,21 @@ export default function WeekScreen() {
             <ChoreSection
               title="Today"
               occurrences={sections.today}
+              rewardType={rewardType}
               onToggle={toggleOccurrence}
               pendingIds={pendingToggleIds}
             />
             <ChoreSection
               title="Later this week"
               occurrences={sections.later}
+              rewardType={rewardType}
               onToggle={toggleOccurrence}
               pendingIds={pendingToggleIds}
             />
             <ChoreSection
               title="Completed"
               occurrences={sections.completed}
+              rewardType={rewardType}
               onToggle={toggleOccurrence}
               pendingIds={pendingToggleIds}
             />
@@ -271,11 +276,12 @@ function groupOccurrencesByStatus(occurrences: ChoreOccurrence[], todayISO: stri
 interface ChoreSectionProps {
   title: string;
   occurrences: ChoreOccurrence[];
+  rewardType: RewardType;
   onToggle: (occurrenceId: string) => void;
   pendingIds: Set<string>;
 }
 
-function ChoreSection({ title, occurrences, onToggle, pendingIds }: ChoreSectionProps) {
+function ChoreSection({ title, occurrences, rewardType, onToggle, pendingIds }: ChoreSectionProps) {
   if (occurrences.length === 0) return null;
 
   return (
@@ -286,6 +292,7 @@ function ChoreSection({ title, occurrences, onToggle, pendingIds }: ChoreSection
           key={occurrence.id}
           name={occurrence.name}
           amountCents={occurrence.amountCents}
+          rewardType={rewardType}
           completed={occurrence.status === 'completed'}
           onToggle={() => onToggle(occurrence.id)}
           disabled={pendingIds.has(occurrence.id)}

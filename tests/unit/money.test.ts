@@ -2,8 +2,13 @@ import {
   calculateEarnedCents,
   calculateMaximumCents,
   formatCurrency,
+  formatReward,
+  formatStars,
   isValidChoreAmountCents,
+  isValidRewardAmount,
   parseEuroAmountToCents,
+  parseRewardAmount,
+  parseWholeStarsAmount,
 } from '@/lib/money';
 
 // Money is always integer cents (see master spec section 6) — these tests exist
@@ -164,5 +169,101 @@ describe('isValidChoreAmountCents', () => {
 
   it('rejects a non-integer amount', () => {
     expect(isValidChoreAmountCents(2.5)).toBe(false);
+  });
+});
+
+// Extra feature: a child can earn stars instead of euros. Stars are always
+// whole numbers — no cents-style scaling, unlike currency.
+describe('formatStars', () => {
+  it('formats a whole number of stars', () => {
+    expect(formatStars(3)).toBe('3 ⭐');
+  });
+
+  it('formats zero stars', () => {
+    expect(formatStars(0)).toBe('0 ⭐');
+  });
+
+  it('rejects a negative amount', () => {
+    expect(() => formatStars(-1)).toThrow();
+  });
+
+  it('rejects a non-integer amount', () => {
+    expect(() => formatStars(2.5)).toThrow();
+  });
+});
+
+describe('formatReward', () => {
+  it('formats a currency amount as euros', () => {
+    expect(formatReward(250, 'currency')).toBe('€2.50');
+  });
+
+  it('formats a stars amount as stars', () => {
+    expect(formatReward(3, 'stars')).toBe('3 ⭐');
+  });
+});
+
+describe('parseWholeStarsAmount', () => {
+  it('parses a whole number', () => {
+    expect(parseWholeStarsAmount('3')).toBe(3);
+  });
+
+  it('parses zero', () => {
+    expect(parseWholeStarsAmount('0')).toBe(0);
+  });
+
+  it('trims surrounding whitespace', () => {
+    expect(parseWholeStarsAmount('  5  ')).toBe(5);
+  });
+
+  it('returns null for a decimal amount — stars are whole numbers only', () => {
+    expect(parseWholeStarsAmount('2.5')).toBeNull();
+  });
+
+  it('returns null for a negative amount', () => {
+    expect(parseWholeStarsAmount('-1')).toBeNull();
+  });
+
+  it('returns null for empty input', () => {
+    expect(parseWholeStarsAmount('')).toBeNull();
+  });
+
+  it('returns null for non-numeric input', () => {
+    expect(parseWholeStarsAmount('abc')).toBeNull();
+  });
+});
+
+describe('isValidRewardAmount', () => {
+  it('accepts a valid currency amount', () => {
+    expect(isValidRewardAmount(250, 'currency')).toBe(true);
+  });
+
+  it('rejects a currency amount over the sanity cap', () => {
+    expect(isValidRewardAmount(100_001, 'currency')).toBe(false);
+  });
+
+  it('accepts a valid stars amount', () => {
+    expect(isValidRewardAmount(3, 'stars')).toBe(true);
+  });
+
+  it('rejects a stars amount over the sanity cap', () => {
+    expect(isValidRewardAmount(1001, 'stars')).toBe(false);
+  });
+
+  it('rejects a negative stars amount', () => {
+    expect(isValidRewardAmount(-1, 'stars')).toBe(false);
+  });
+});
+
+describe('parseRewardAmount', () => {
+  it('parses a currency amount with decimals', () => {
+    expect(parseRewardAmount('2.50', 'currency')).toBe(250);
+  });
+
+  it('parses a stars amount as a whole number', () => {
+    expect(parseRewardAmount('3', 'stars')).toBe(3);
+  });
+
+  it('rejects a decimal stars amount', () => {
+    expect(parseRewardAmount('2.5', 'stars')).toBeNull();
   });
 });

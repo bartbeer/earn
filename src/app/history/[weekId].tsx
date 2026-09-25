@@ -6,7 +6,7 @@ import { Button } from '@/components/Button';
 import { Card } from '@/components/Card';
 import { ChoreRow } from '@/components/ChoreRow';
 import { fetchWeekById } from '@/lib/api/weeks';
-import { formatCurrency } from '@/lib/money';
+import { formatReward } from '@/lib/money';
 import { colors, spacing, typography } from '@/lib/theme';
 import type { PaymentStatus, WeekSummary } from '@/types/domain';
 
@@ -65,6 +65,7 @@ export default function WeekDetailScreen() {
             key={occurrence.id}
             name={occurrence.name}
             amountCents={occurrence.amountCents}
+            rewardType={week.childRewardType}
             completed={occurrence.status === 'completed'}
             onToggle={() => {}}
           />
@@ -74,15 +75,25 @@ export default function WeekDetailScreen() {
       <View style={styles.earnedBlock}>
         <Text style={typography.secondaryMeta}>Earned</Text>
         <Text style={typography.primaryNumber}>
-          {formatCurrency(week.earnedCents)}{' '}
-          <Text style={styles.maximum}>/ {formatCurrency(week.maximumCents)}</Text>
+          {formatReward(week.earnedCents, week.childRewardType)}{' '}
+          <Text style={styles.maximum}>/ {formatReward(week.maximumCents, week.childRewardType)}</Text>
         </Text>
       </View>
 
+      {/* "Paid" implies real money, which doesn't fit stars — a
+          non-monetary reward is "given", not "paid" (see also the History
+          list screen's identically-reasoned PaymentBadge). */}
       {isPaid ? (
-        <Button label="Paid ✓" variant="secondary" onPress={() => setPaymentStatus('not_paid')} />
+        <Button
+          label={week.childRewardType === 'stars' ? 'Given ✓' : 'Paid ✓'}
+          variant="secondary"
+          onPress={() => setPaymentStatus('not_paid')}
+        />
       ) : (
-        <Button label="Mark as paid" onPress={() => setPaymentStatus('paid')} />
+        <Button
+          label={week.childRewardType === 'stars' ? 'Mark as given' : 'Mark as paid'}
+          onPress={() => setPaymentStatus('paid')}
+        />
       )}
     </ScrollView>
   );

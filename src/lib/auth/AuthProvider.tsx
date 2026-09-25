@@ -8,7 +8,7 @@ import {
 } from '@/lib/api/family';
 import { resolveAppState, type AppState } from '@/lib/authState';
 import { supabase } from '@/lib/supabase';
-import type { Membership } from '@/types/domain';
+import type { Membership, RewardType } from '@/types/domain';
 
 interface AuthContextValue {
   appState: AppState;
@@ -17,7 +17,7 @@ interface AuthContextValue {
   signUp: (email: string, password: string, displayName: string) => Promise<void>;
   signOut: () => Promise<void>;
   createFamily: (name: string) => Promise<void>;
-  addChild: (name: string) => Promise<void>;
+  addChild: (name: string, rewardType: RewardType) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -94,11 +94,11 @@ export function AuthProvider({ children }: PropsWithChildren) {
     await refreshMembership();
   }
 
-  async function addChild(name: string) {
+  async function addChild(name: string, rewardType: RewardType) {
     if (appState.status !== 'active') {
       throw new Error('Create a family before adding children.');
     }
-    await apiAddChild(appState.membership.familyId, name);
+    await apiAddChild(appState.membership.familyId, name, rewardType);
   }
 
   return (
