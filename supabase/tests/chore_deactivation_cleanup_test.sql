@@ -107,5 +107,37 @@ SELECT is(
   'the paid week''s maximum_cents is untouched by the cleanup'
 );
 
+-- ==== A week left with zero occurrences resets to zero, not a stale value ====
+-- Regression: deactivating a chore that was the *only* source of a week's
+-- occurrences deleted the pending ones but left maximum_cents/earned_cents
+-- at their pre-deactivation value — the cleanup's weekly_allowances UPDATE
+-- was guarded by "only touch weeks that still have some occurrence left",
+-- which skips exactly the case that most needs updating: zero remaining.
+insert into public.chores (id, family_id, child_id, name, amount_cents, recurrence_type, created_at)
+  values ('83000000-0000-0000-0000-000000000013', '83000000-0000-0000-0000-000000000002', '83000000-0000-0000-0000-000000000003', 'Feed the cat', 30, 'daily', '2026-09-16 00:00:00+00');
+select public._generate_week_occurrences('83000000-0000-0000-0000-000000000002', '2026-09-16 12:00:00+02');
+
+SELECT is(
+  (select maximum_cents from public.weekly_allowances where child_id = '83000000-0000-0000-0000-000000000003' and week_start = '2026-09-14'),
+  50 + 30 * 5,
+  'sanity check: maximum_cents grew to include this new chore''s occurrences (Wed-Sun, 5 days)'
+);
+
+set local role authenticated;
+set local request.jwt.claims to '{"sub": "83000000-0000-0000-0000-000000000001", "role": "authenticated"}';
+update public.chores set active = false where id = '83000000-0000-0000-0000-000000000013';
+reset role;
+
+SELECT is(
+  (select count(*) from public.chore_occurrences where chore_id = '83000000-0000-0000-0000-000000000013'),
+  0::bigint,
+  'sanity check: this chore''s never-completed occurrences were all deleted'
+);
+SELECT is(
+  (select maximum_cents from public.weekly_allowances where child_id = '83000000-0000-0000-0000-000000000003' and week_start = '2026-09-14'),
+  50,
+  'maximum_cents falls back to just the still-completed occurrence from earlier in this test, not a stale higher value'
+);
+
 SELECT * FROM finish();
 ROLLBACK;

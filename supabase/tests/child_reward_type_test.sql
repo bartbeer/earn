@@ -1,9 +1,14 @@
 -- Extra feature: a parent can choose whether a child earns euros or stars.
--- Defaults to 'currency', settable at creation, and changeable later only
--- while the child still has zero chores — once they have one (active or
--- not), the type locks, because chores/occurrences don't snapshot their own
--- reward_type and there's no safe way to reinterpret an existing
--- amount_cents across a unit change.
+-- Defaults to 'currency', settable at creation, and changeable later —
+-- locked only while the child has an active chore (which could still
+-- generate an occurrence under the old unit) or any chore_occurrences row
+-- at all (real recorded history in the old unit, which chores/occurrences
+-- don't snapshot their own reward_type to protect against reinterpreting).
+-- Deactivating the child's only chore before it's ever generated an
+-- occurrence unlocks the type again — see the "unlocked again" case below,
+-- which is a real bug reported by hand-testing (the original version of
+-- this lock checked for any chores row at all, active or not, which was
+-- too conservative).
 BEGIN;
 SELECT no_plan();
 
@@ -68,7 +73,7 @@ SELECT lives_ok(
 );
 reset role;
 
--- ==== Locked once a chore exists ==============================================
+-- ==== Locked while a chore is active ===========================================
 insert into public.chores (id, family_id, child_id, name, amount_cents, recurrence_type)
   values ('86000000-0000-0000-0000-000000000004', '86000000-0000-0000-0000-000000000002', '86000000-0000-0000-0000-000000000003', 'Room tidy', 250, 'once_weekly');
 
@@ -79,7 +84,7 @@ SELECT throws_ok(
   $$ update public.children set reward_type = 'stars' where id = '86000000-0000-0000-0000-000000000003' $$,
   'P0001',
   NULL,
-  'once the child has a chore, changing reward_type is rejected — even by their own family''s parent'
+  'while the child has an active chore, changing reward_type is rejected — even with zero occurrences generated yet'
 );
 reset role;
 
@@ -89,17 +94,49 @@ SELECT is(
   'the reward_type is unchanged after the rejected attempt'
 );
 
--- Deactivating the chore doesn't unlock it either — history in the old unit
--- still exists, the same as an active chore would.
+-- ==== Unlocked again once that chore is deactivated with no occurrences left ===
+-- The reported scenario: add a chore, deactivate it before ever generating
+-- or completing anything for it. The existing cleanup trigger removes its
+-- pending occurrences, leaving zero actual history — reward_type should be
+-- free to change again.
 set local role authenticated;
 set local request.jwt.claims to '{"sub": "86000000-0000-0000-0000-000000000001", "role": "authenticated"}';
 update public.chores set active = false where id = '86000000-0000-0000-0000-000000000004';
+reset role;
+
+SELECT is(
+  (select count(*) from public.chore_occurrences where chore_id = '86000000-0000-0000-0000-000000000004'),
+  0::bigint,
+  'sanity check: deactivating a never-generated chore leaves zero occurrences behind'
+);
+
+set local role authenticated;
+set local request.jwt.claims to '{"sub": "86000000-0000-0000-0000-000000000001", "role": "authenticated"}';
+SELECT lives_ok(
+  $$ update public.children set reward_type = 'stars' where id = '86000000-0000-0000-0000-000000000003' $$,
+  'deactivating the child''s only chore, with no occurrences ever generated, unlocks reward_type again'
+);
+reset role;
+
+-- ==== Still locked if real history (a completed occurrence) exists ============
+-- A fresh chore, this time actually generated and completed before being
+-- deactivated — that earned amount is real recorded history, so switching
+-- back must still be blocked even though the chore itself is inactive.
+insert into public.chores (id, family_id, child_id, name, amount_cents, recurrence_type, created_at)
+  values ('86000000-0000-0000-0000-000000000012', '86000000-0000-0000-0000-000000000002', '86000000-0000-0000-0000-000000000003', 'Dishwasher', 3, 'daily', '2026-01-01 00:00:00+00');
+select public._generate_week_occurrences('86000000-0000-0000-0000-000000000002', '2026-09-16 12:00:00+02');
+update public.chore_occurrences set status = 'completed', completed_at = now()
+  where chore_id = '86000000-0000-0000-0000-000000000012' and scheduled_date = '2026-09-14';
+
+set local role authenticated;
+set local request.jwt.claims to '{"sub": "86000000-0000-0000-0000-000000000001", "role": "authenticated"}';
+update public.chores set active = false where id = '86000000-0000-0000-0000-000000000012';
 
 SELECT throws_ok(
-  $$ update public.children set reward_type = 'stars' where id = '86000000-0000-0000-0000-000000000003' $$,
+  $$ update public.children set reward_type = 'currency' where id = '86000000-0000-0000-0000-000000000003' $$,
   'P0001',
   NULL,
-  'reward_type stays locked even once the child''s only chore is deactivated, not just while active'
+  'a completed occurrence still blocks the switch even after its chore is deactivated — real earned history must never be silently reinterpreted'
 );
 reset role;
 
