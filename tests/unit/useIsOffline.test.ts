@@ -1,35 +1,84 @@
-import { renderHook } from '@testing-library/react-native';
+import { act, renderHook, waitFor } from '@testing-library/react-native';
 
 import { useIsOffline } from '@/hooks/useIsOffline';
 
-const mockUseNetworkState = jest.fn();
+const mockFetch = jest.fn();
+const mockAddEventListener = jest.fn();
+const mockUnsubscribe = jest.fn();
 
-jest.mock('expo-network', () => ({
-  useNetworkState: () => mockUseNetworkState(),
+jest.mock('@react-native-community/netinfo', () => ({
+  __esModule: true,
+  default: {
+    fetch: (...args: unknown[]) => mockFetch(...args),
+    addEventListener: (...args: unknown[]) => mockAddEventListener(...args),
+  },
 }));
 
 beforeEach(() => {
-  mockUseNetworkState.mockReset();
+  mockFetch.mockReset();
+  mockAddEventListener.mockReset().mockReturnValue(mockUnsubscribe);
+  mockUnsubscribe.mockReset();
 });
 
-// Phase 10: offline detection. Deliberately keyed on isConnected (not
-// isInternetReachable) — see the hook's own comment for why.
+// Phase 10: offline detection. Reported by hand-testing: the original
+// implementation (expo-network's useNetworkState) detected going offline
+// but never noticed coming back online without a full app reload — these
+// tests specifically cover both directions via NetInfo's live listener,
+// not just the initial fetch.
 describe('useIsOffline', () => {
-  it('reports online when connected', async () => {
-    mockUseNetworkState.mockReturnValue({ isConnected: true });
+  it('reports online once the initial fetch resolves connected', async () => {
+    mockFetch.mockResolvedValue({ isConnected: true });
+    const { result } = await renderHook(() => useIsOffline());
+    await waitFor(() => expect(result.current).toBe(false));
+  });
+
+  it('reports offline once the initial fetch resolves disconnected', async () => {
+    mockFetch.mockResolvedValue({ isConnected: false });
+    const { result } = await renderHook(() => useIsOffline());
+    await waitFor(() => expect(result.current).toBe(true));
+  });
+
+  it('defaults to online before the initial fetch resolves', async () => {
+    mockFetch.mockImplementation(() => new Promise(() => {})); // never resolves
     const { result } = await renderHook(() => useIsOffline());
     expect(result.current).toBe(false);
   });
 
-  it('reports offline when not connected', async () => {
-    mockUseNetworkState.mockReturnValue({ isConnected: false });
+  it('updates live when the listener reports going offline', async () => {
+    mockFetch.mockResolvedValue({ isConnected: true });
     const { result } = await renderHook(() => useIsOffline());
+    await waitFor(() => expect(result.current).toBe(false));
+
+    const listener = mockAddEventListener.mock.calls[0][0];
+    await act(async () => {
+      listener({ isConnected: false });
+    });
+
     expect(result.current).toBe(true);
   });
 
-  it('reports online (not offline) while the state is still undetermined', async () => {
-    mockUseNetworkState.mockReturnValue({ isConnected: undefined });
+  // The exact regression: going offline was detected, but coming back
+  // online was not, until the app was fully reloaded.
+  it('updates live when the listener reports coming back online', async () => {
+    mockFetch.mockResolvedValue({ isConnected: false });
     const { result } = await renderHook(() => useIsOffline());
+    await waitFor(() => expect(result.current).toBe(true));
+
+    const listener = mockAddEventListener.mock.calls[0][0];
+    await act(async () => {
+      listener({ isConnected: true });
+    });
+
     expect(result.current).toBe(false);
+  });
+
+  it('unsubscribes from the listener on unmount', async () => {
+    mockFetch.mockResolvedValue({ isConnected: true });
+    const { unmount } = await renderHook(() => useIsOffline());
+    await waitFor(() => expect(mockAddEventListener).toHaveBeenCalled());
+
+    await unmount();
+
+    expect(mockUnsubscribe).toHaveBeenCalled();
   });
 });
