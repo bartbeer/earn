@@ -19,7 +19,7 @@ import {
   updateChildRewardType,
   verifyParentPin,
 } from '@/lib/api/family';
-import { describeFailure } from '@/lib/errorMessages';
+import { describeFailure, isRateLimitError } from '@/lib/errorMessages';
 import { colors, spacing, typography } from '@/lib/theme';
 import type { Child, RewardType } from '@/types/domain';
 
@@ -104,8 +104,15 @@ function ParentSections({ familyId }: { familyId: string }) {
       } else {
         setPinError('Wrong PIN. Try again.');
       }
-    } catch {
-      setPinError(describeFailure(isOffline, "Couldn't check that. Try again."));
+    } catch (error) {
+      // Distinct from a routine wrong guess: every further guess is
+      // rejected regardless of correctness until the cooldown passes, so
+      // "Wrong PIN, try again" would be actively misleading here.
+      if (isRateLimitError(error)) {
+        setPinError('Too many attempts. Try again in a few minutes.');
+      } else {
+        setPinError(describeFailure(isOffline, "Couldn't check that. Try again."));
+      }
     } finally {
       setIsVerifying(false);
       setPinInput('');

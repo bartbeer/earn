@@ -16,7 +16,7 @@ import { TextField } from '@/components/TextField';
 import { useIsOffline } from '@/hooks/useIsOffline';
 import { resolveFamilyJoinCode, type ResolvedJoinCode } from '@/lib/api/family';
 import { useAuth } from '@/lib/auth/AuthProvider';
-import { describeFailure } from '@/lib/errorMessages';
+import { describeFailure, isRateLimitError } from '@/lib/errorMessages';
 import { colors, spacing, typography } from '@/lib/theme';
 
 // Onboarding alternative to creating a family (master spec section 79's
@@ -42,11 +42,16 @@ export default function JoinFamilyScreen() {
     try {
       const result = await resolveFamilyJoinCode(code.trim());
       setResolved(result);
-    } catch {
+    } catch (error) {
       // A network failure here would otherwise show this exact "invalid
       // code" wording too, wrongly telling someone their real, unexpired
-      // code is bad when the actual problem is no connection.
-      setError(describeFailure(isOffline, "That code isn't valid — check with your parent and try again."));
+      // code is bad when the actual problem is no connection. Too many
+      // wrong guesses gets its own message too, for the same reason.
+      if (isRateLimitError(error)) {
+        setError('Too many attempts. Try again in a few minutes.');
+      } else {
+        setError(describeFailure(isOffline, "That code isn't valid — check with your parent and try again."));
+      }
     } finally {
       setIsResolving(false);
     }
@@ -61,8 +66,12 @@ export default function JoinFamilyScreen() {
       // No manual navigation: once this succeeds, appState flips to
       // 'active' and the root layout's Stack.Protected guards react on
       // their own, same as createFamily().
-    } catch {
-      setError(describeFailure(isOffline, "Couldn't join. Try again."));
+    } catch (error) {
+      if (isRateLimitError(error)) {
+        setError('Too many attempts. Try again in a few minutes.');
+      } else {
+        setError(describeFailure(isOffline, "Couldn't join. Try again."));
+      }
       setIsJoining(false);
     }
   }

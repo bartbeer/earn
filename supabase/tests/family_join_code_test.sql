@@ -73,12 +73,19 @@ SELECT ok(
 );
 
 -- ==== resolve_family_join_code ==================================================
-SELECT throws_ok(
-  $$ select public.resolve_family_join_code('000000') $$,
-  'P0001',
-  NULL,
+-- Deliberately doesn't throw for "code doesn't resolve to anything" (unlike
+-- most other failures here, which still throw as before) — see the
+-- migration's own comment on why: recording a rate-limit failure and then
+-- still raising in the same call would silently undo the recording itself,
+-- since an uncaught exception rolls back the whole transaction.
+set local role authenticated;
+set local request.jwt.claims to '{"sub": "89000000-0000-0000-0000-000000000006", "role": "authenticated"}';
+SELECT is(
+  (select count(*) from public.resolve_family_join_code('000000')),
+  0::bigint,
   'a made-up code resolves to nothing'
 );
+reset role;
 
 set local role authenticated;
 set local request.jwt.claims to '{"sub": "89000000-0000-0000-0000-000000000006", "role": "authenticated"}';
@@ -100,11 +107,10 @@ update public.families set join_code_expires_at = now() - interval '1 minute'
 
 set local role authenticated;
 set local request.jwt.claims to '{"sub": "89000000-0000-0000-0000-000000000006", "role": "authenticated"}';
-SELECT throws_ok(
-  $$ select public.resolve_family_join_code((select code from captured_code)) $$,
-  'P0001',
-  NULL,
-  'an expired code is rejected even though the hash still matches'
+SELECT is(
+  (select count(*) from public.resolve_family_join_code((select code from captured_code))),
+  0::bigint,
+  'an expired code resolves to nothing, even though the hash still matches'
 );
 reset role;
 
@@ -123,11 +129,10 @@ SELECT throws_ok(
   'cannot join as Emma — she''s already claimed'
 );
 
-SELECT throws_ok(
-  $$ select public.join_family_as_child('999999', '89000000-0000-0000-0000-000000000004') $$,
-  'P0001',
-  NULL,
-  'a wrong code is rejected even naming a real, unclaimed child'
+SELECT is(
+  (select public.join_family_as_child('999999', '89000000-0000-0000-0000-000000000004')),
+  false,
+  'a wrong code is rejected (returns false, not an error) even naming a real, unclaimed child'
 );
 
 SELECT throws_ok(
@@ -137,8 +142,9 @@ SELECT throws_ok(
   'a nonexistent child id is rejected'
 );
 
-SELECT lives_ok(
-  $$ select public.join_family_as_child((select code from captured_code), '89000000-0000-0000-0000-000000000004') $$,
+SELECT is(
+  (select public.join_family_as_child((select code from captured_code), '89000000-0000-0000-0000-000000000004')),
+  true,
   'the new user can join as Lucas with a valid, unexpired code'
 );
 reset role;

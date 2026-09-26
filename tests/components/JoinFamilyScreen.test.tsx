@@ -215,4 +215,54 @@ describe('JoinFamilyScreen', () => {
 
     expect(screen.getByText("You're offline. Try again once you're back online.")).toBeTruthy();
   });
+
+  // Phase 12: too many wrong codes gets its own message — "that code isn't
+  // valid" would be misleading once every further guess (even a correct
+  // one) is rejected regardless, until the cooldown passes.
+  it('shows a rate-limit message instead of "invalid code" after too many wrong guesses', async () => {
+    mockedResolveFamilyJoinCode.mockRejectedValue(
+      new Error('Too many attempts. Try again in a few minutes.'),
+    );
+
+    await render(<JoinFamilyScreen />);
+
+    await act(async () => {
+      fireEvent.changeText(screen.getByLabelText('Join code'), '123456');
+    });
+    await act(async () => {
+      fireEvent.press(screen.getByText('Find my family'));
+    });
+
+    expect(screen.getByText('Too many attempts. Try again in a few minutes.')).toBeTruthy();
+    expect(
+      screen.queryByText("That code isn't valid — check with your parent and try again."),
+    ).toBeNull();
+  });
+
+  it('shows a rate-limit message when joining is rejected for too many attempts', async () => {
+    mockedResolveFamilyJoinCode.mockResolvedValue({
+      familyName: 'The Smiths',
+      children: [{ id: 'child-1', name: 'Lucas' }],
+    });
+    mockJoinFamily.mockRejectedValue(new Error('Too many attempts. Try again in a few minutes.'));
+
+    await render(<JoinFamilyScreen />);
+
+    await act(async () => {
+      fireEvent.changeText(screen.getByLabelText('Join code'), '123456');
+    });
+    await act(async () => {
+      fireEvent.press(screen.getByText('Find my family'));
+    });
+    await waitFor(() => expect(screen.getByText('Lucas')).toBeTruthy());
+
+    await act(async () => {
+      fireEvent.press(screen.getByText('Lucas'));
+    });
+    await act(async () => {
+      fireEvent.press(screen.getByText('Join'));
+    });
+
+    expect(screen.getByText('Too many attempts. Try again in a few minutes.')).toBeTruthy();
+  });
 });

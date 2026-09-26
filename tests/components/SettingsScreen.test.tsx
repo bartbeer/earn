@@ -368,4 +368,28 @@ describe('SettingsScreen Parent PIN gate', () => {
     await waitFor(() => expect(screen.getByText('Wrong PIN. Try again.')).toBeTruthy());
     expect(screen.queryByText('Children')).toBeNull();
   });
+
+  // Phase 12: too many wrong guesses gets its own message — "Wrong PIN,
+  // try again" would be misleading once every further guess (even the
+  // correct one) is rejected regardless, until the cooldown passes.
+  it('shows a rate-limit message instead of "wrong PIN" after too many failed attempts', async () => {
+    mockedHasParentPin.mockResolvedValue(true);
+    mockedVerifyParentPin.mockRejectedValue(
+      new Error('Too many attempts. Try again in a few minutes.'),
+    );
+
+    await render(withSafeArea(<SettingsScreen />));
+    await waitFor(() => expect(screen.getByText('Settings locked')).toBeTruthy());
+
+    await act(async () => {
+      fireEvent.changeText(screen.getByLabelText('Parent PIN'), '4242');
+    });
+    await act(async () => {
+      fireEvent.press(screen.getByText('Unlock'));
+    });
+
+    expect(screen.getByText('Too many attempts. Try again in a few minutes.')).toBeTruthy();
+    expect(screen.queryByText('Wrong PIN. Try again.')).toBeNull();
+    expect(screen.queryByText('Children')).toBeNull();
+  });
 });

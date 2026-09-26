@@ -178,8 +178,10 @@ export interface ResolvedJoinCode {
 interface ResolveJoinCodeRow {
   family_id: string;
   family_name: string;
-  child_id: string;
-  child_name: string;
+  // null on the sentinel row returned when the code is valid but every
+  // child is already claimed — see resolve_family_join_code's own comment.
+  child_id: string | null;
+  child_name: string | null;
 }
 
 /**
@@ -187,6 +189,13 @@ interface ResolveJoinCodeRow {
  * children haven't been claimed by a user account yet — without joining
  * anything. Callable by any signed-in user, including one who doesn't
  * belong to a family yet.
+ *
+ * The RPC itself never throws for "the code doesn't resolve to anything"
+ * (rate-limited, so it deliberately returns zero rows instead of raising —
+ * see the migration's own comment on why raising there would silently undo
+ * its own attempt-tracking write); this wrapper is what turns "zero rows"
+ * back into a thrown error, keeping the same external contract callers
+ * already expect.
  */
 export async function resolveFamilyJoinCode(joinCode: string): Promise<ResolvedJoinCode> {
   const { data, error } = await supabase.rpc('resolve_family_join_code', {
@@ -194,9 +203,16 @@ export async function resolveFamilyJoinCode(joinCode: string): Promise<ResolvedJ
   });
   if (error) throw error;
   const rows = (data ?? []) as ResolveJoinCodeRow[];
+  if (rows.length === 0) {
+    throw new Error('Invalid or expired join code');
+  }
   return {
-    familyName: rows[0]?.family_name ?? '',
-    children: rows.map((row) => ({ id: row.child_id, name: row.child_name })),
+    familyName: rows[0].family_name,
+    children: rows
+      .filter((row): row is ResolveJoinCodeRow & { child_id: string; child_name: string } =>
+        row.child_id !== null,
+      )
+      .map((row) => ({ id: row.child_id, name: row.child_name })),
   };
 }
 
@@ -205,13 +221,23 @@ export async function resolveFamilyJoinCode(joinCode: string): Promise<ResolvedJ
  * within the family the code resolves to. Re-validates the code
  * server-side rather than trusting an earlier resolveFamilyJoinCode call
  * is still good (section 77).
+ *
+ * Same reasoning as resolveFamilyJoinCode: the RPC returns false rather
+ * than throwing for "the code doesn't resolve to anything" (rate-limiting
+ * reasons), so this wrapper turns that back into a thrown error to keep
+ * the same external contract. Every other failure (wrong child, already
+ * claimed, already belongs to a family) still throws directly from the
+ * RPC, unchanged.
  */
 export async function joinFamilyAsChild(joinCode: string, childId: string): Promise<void> {
-  const { error } = await supabase.rpc('join_family_as_child', {
+  const { data, error } = await supabase.rpc('join_family_as_child', {
     p_join_code: joinCode,
     p_child_id: childId,
   });
   if (error) throw error;
+  if (data === false) {
+    throw new Error('Invalid or expired join code');
+  }
 }
 
 /**
