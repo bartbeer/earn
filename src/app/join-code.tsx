@@ -2,8 +2,10 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Button } from '@/components/Button';
+import { useIsOffline } from '@/hooks/useIsOffline';
 import { rotateFamilyJoinCode } from '@/lib/api/family';
 import { useAuth } from '@/lib/auth/AuthProvider';
+import { describeFailure } from '@/lib/errorMessages';
 import { colors, spacing, typography } from '@/lib/theme';
 
 // Phase 9: parent-facing half of the join-code flow (Settings > Family >
@@ -15,6 +17,7 @@ import { colors, spacing, typography } from '@/lib/theme';
 export default function JoinCodeScreen() {
   const { appState } = useAuth();
   const familyId = appState.status === 'active' ? appState.membership.familyId : '';
+  const isOffline = useIsOffline();
   const [code, setCode] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   // Starts true: generation begins immediately on mount below.
@@ -31,7 +34,7 @@ export default function JoinCodeScreen() {
         if (isMounted) setCode(newCode);
       })
       .catch(() => {
-        if (isMounted) setError("Couldn't generate a code. Try again.");
+        if (isMounted) setError(describeFailure(isOffline, "Couldn't generate a code. Try again."));
       })
       .finally(() => {
         if (isMounted) setIsGenerating(false);
@@ -49,7 +52,7 @@ export default function JoinCodeScreen() {
       const newCode = await rotateFamilyJoinCode(familyId);
       setCode(newCode);
     } catch {
-      setError("Couldn't generate a code. Try again.");
+      setError(describeFailure(isOffline, "Couldn't generate a code. Try again."));
     } finally {
       setIsGenerating(false);
     }

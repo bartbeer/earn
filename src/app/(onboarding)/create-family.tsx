@@ -12,12 +12,15 @@ import {
 
 import { Button } from '@/components/Button';
 import { TextField } from '@/components/TextField';
+import { useIsOffline } from '@/hooks/useIsOffline';
 import { useAuth } from '@/lib/auth/AuthProvider';
+import { describeFailure } from '@/lib/errorMessages';
 import { colors, spacing, typography } from '@/lib/theme';
 
 // Onboarding step 1 (master spec section 92) — deliberately just one field.
 export default function CreateFamilyScreen() {
   const { createFamily, signOut } = useAuth();
+  const isOffline = useIsOffline();
   const [name, setName] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -33,7 +36,7 @@ export default function CreateFamilyScreen() {
       // normal action reachable anytime from there (section 88's "Add your
       // first child" empty state), not a forced onboarding step.
     } catch {
-      setError("Couldn't create your family. Try again.");
+      setError(describeFailure(isOffline, "Couldn't create your family. Try again."));
     } finally {
       setIsSubmitting(false);
     }

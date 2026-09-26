@@ -5,13 +5,16 @@ import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-nat
 import { Button } from '@/components/Button';
 import { Card } from '@/components/Card';
 import { ChoreRow } from '@/components/ChoreRow';
+import { useIsOffline } from '@/hooks/useIsOffline';
 import { fetchWeekById, setWeekPaymentStatus } from '@/lib/api/weeks';
+import { describeFailure } from '@/lib/errorMessages';
 import { formatReward } from '@/lib/money';
 import { colors, spacing, typography } from '@/lib/theme';
 import type { WeekSummary } from '@/types/domain';
 
 export default function WeekDetailScreen() {
   const { weekId } = useLocalSearchParams<{ weekId: string }>();
+  const isOffline = useIsOffline();
   const [week, setWeek] = useState<WeekSummary | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSavingPayment, setIsSavingPayment] = useState(false);
@@ -60,7 +63,7 @@ export default function WeekDetailScreen() {
       })
       .catch(() => {
         setWeek(previous);
-        setPaymentError("Couldn't save that. Try again.");
+        setPaymentError(describeFailure(isOffline));
       })
       .finally(() => {
         setIsSavingPayment(false);

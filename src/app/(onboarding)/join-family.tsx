@@ -13,8 +13,10 @@ import {
 import { Button } from '@/components/Button';
 import { Chip } from '@/components/Chip';
 import { TextField } from '@/components/TextField';
+import { useIsOffline } from '@/hooks/useIsOffline';
 import { resolveFamilyJoinCode, type ResolvedJoinCode } from '@/lib/api/family';
 import { useAuth } from '@/lib/auth/AuthProvider';
+import { describeFailure } from '@/lib/errorMessages';
 import { colors, spacing, typography } from '@/lib/theme';
 
 // Onboarding alternative to creating a family (master spec section 79's
@@ -24,6 +26,7 @@ import { colors, spacing, typography } from '@/lib/theme';
 // family's existing children.
 export default function JoinFamilyScreen() {
   const { joinFamily, signOut } = useAuth();
+  const isOffline = useIsOffline();
   const [code, setCode] = useState('');
   const [resolved, setResolved] = useState<ResolvedJoinCode | null>(null);
   const [selectedChildId, setSelectedChildId] = useState<string | null>(null);
@@ -40,7 +43,10 @@ export default function JoinFamilyScreen() {
       const result = await resolveFamilyJoinCode(code.trim());
       setResolved(result);
     } catch {
-      setError("That code isn't valid — check with your parent and try again.");
+      // A network failure here would otherwise show this exact "invalid
+      // code" wording too, wrongly telling someone their real, unexpired
+      // code is bad when the actual problem is no connection.
+      setError(describeFailure(isOffline, "That code isn't valid — check with your parent and try again."));
     } finally {
       setIsResolving(false);
     }
@@ -56,7 +62,7 @@ export default function JoinFamilyScreen() {
       // 'active' and the root layout's Stack.Protected guards react on
       // their own, same as createFamily().
     } catch {
-      setError("Couldn't join. Try again.");
+      setError(describeFailure(isOffline, "Couldn't join. Try again."));
       setIsJoining(false);
     }
   }

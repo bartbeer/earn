@@ -1,7 +1,12 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 
 import JoinCodeScreen from '@/app/join-code';
+import { useIsOffline } from '@/hooks/useIsOffline';
 import { rotateFamilyJoinCode } from '@/lib/api/family';
+
+jest.mock('@/hooks/useIsOffline', () => ({
+  useIsOffline: jest.fn(),
+}));
 
 jest.mock('@/lib/api/family', () => ({
   rotateFamilyJoinCode: jest.fn(),
@@ -24,9 +29,11 @@ jest.mock('@/lib/auth/AuthProvider', () => ({
 const mockedRotateFamilyJoinCode = rotateFamilyJoinCode as jest.MockedFunction<
   typeof rotateFamilyJoinCode
 >;
+const mockedUseIsOffline = useIsOffline as jest.MockedFunction<typeof useIsOffline>;
 
 beforeEach(() => {
   mockedRotateFamilyJoinCode.mockReset();
+  mockedUseIsOffline.mockReset().mockReturnValue(false);
 });
 
 // Phase 9: parent-facing half of the join-code flow — the server only
@@ -63,6 +70,18 @@ describe('JoinCodeScreen', () => {
 
     await waitFor(() =>
       expect(screen.getByText("Couldn't generate a code. Try again.")).toBeTruthy(),
+    );
+  });
+
+  // Phase 10: distinguishes "you're offline" from every other failure.
+  it('shows an offline-specific message when generation fails while offline', async () => {
+    mockedUseIsOffline.mockReturnValue(true);
+    mockedRotateFamilyJoinCode.mockRejectedValue(new Error('network error'));
+
+    await render(<JoinCodeScreen />);
+
+    await waitFor(() =>
+      expect(screen.getByText("You're offline. Try again once you're back online.")).toBeTruthy(),
     );
   });
 });

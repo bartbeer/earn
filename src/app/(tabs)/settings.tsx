@@ -10,6 +10,7 @@ import { Divider } from '@/components/Divider';
 import { SettingsRow } from '@/components/SettingsRow';
 import { TextField } from '@/components/TextField';
 import { useFamilyChildren } from '@/hooks/useFamilyChildren';
+import { useIsOffline } from '@/hooks/useIsOffline';
 import { useAuth } from '@/lib/auth/AuthProvider';
 import {
   deactivateChild,
@@ -18,6 +19,7 @@ import {
   updateChildRewardType,
   verifyParentPin,
 } from '@/lib/api/family';
+import { describeFailure } from '@/lib/errorMessages';
 import { colors, spacing, typography } from '@/lib/theme';
 import type { Child, RewardType } from '@/types/domain';
 
@@ -53,6 +55,7 @@ export default function SettingsScreen() {
 
 function ParentSections({ familyId }: { familyId: string }) {
   const { children, refetch } = useFamilyChildren(familyId);
+  const isOffline = useIsOffline();
 
   // Undefined = still checking whether a PIN is even required; once known,
   // isUnlocked starts true if there's nothing to gate. It only ever flips
@@ -102,7 +105,7 @@ function ParentSections({ familyId }: { familyId: string }) {
         setPinError('Wrong PIN. Try again.');
       }
     } catch {
-      setPinError("Couldn't check that. Try again.");
+      setPinError(describeFailure(isOffline, "Couldn't check that. Try again."));
     } finally {
       setIsVerifying(false);
       setPinInput('');
@@ -119,6 +122,14 @@ function ParentSections({ familyId }: { familyId: string }) {
       await updateChildRewardType(child.id, nextRewardType);
       refetch();
     } catch {
+      // A plain network failure here would otherwise always fall through
+      // to "you have chore history, delete it to switch?" — wrongly
+      // offering a destructive override for a problem that has nothing to
+      // do with chore history at all.
+      if (isOffline) {
+        Alert.alert("Can't change this", describeFailure(true));
+        return;
+      }
       // The server locks this while the child has an active chore or any
       // recorded chore history — there's no safe way to reinterpret an
       // already-recorded amount in the other unit. Offer the explicit,
@@ -141,6 +152,10 @@ function ParentSections({ familyId }: { familyId: string }) {
               await forceSwitchChildRewardType(child.id, nextRewardType);
               refetch();
             } catch {
+              if (isOffline) {
+                Alert.alert("Can't change this", describeFailure(true));
+                return;
+              }
               // The one thing even the destructive override never removes:
               // a paid week is a real record of money/stars already given.
               Alert.alert(
@@ -168,8 +183,12 @@ function ParentSections({ familyId }: { familyId: string }) {
         text: 'Remove',
         style: 'destructive',
         onPress: async () => {
-          await deactivateChild(child.id);
-          refetch();
+          try {
+            await deactivateChild(child.id);
+            refetch();
+          } catch {
+            Alert.alert("Couldn't remove", describeFailure(isOffline));
+          }
         },
       },
     ]);

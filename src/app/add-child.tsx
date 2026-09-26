@@ -5,7 +5,9 @@ import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } fr
 import { Button } from '@/components/Button';
 import { Chip } from '@/components/Chip';
 import { TextField } from '@/components/TextField';
+import { useIsOffline } from '@/hooks/useIsOffline';
 import { useAuth } from '@/lib/auth/AuthProvider';
+import { describeFailure } from '@/lib/errorMessages';
 import { colors, spacing, typography } from '@/lib/theme';
 import type { RewardType } from '@/types/domain';
 
@@ -21,6 +23,7 @@ const REWARD_TYPE_OPTIONS: { value: RewardType; label: string }[] = [
 // visit here keeps this screen from doubling as its own mini list.
 export default function AddChildScreen() {
   const { addChild } = useAuth();
+  const isOffline = useIsOffline();
   const [name, setName] = useState('');
   // Some parents don't want a younger child working for real money — stars
   // is a purely non-monetary alternative. Changeable later from Settings,
@@ -38,7 +41,7 @@ export default function AddChildScreen() {
       await addChild(trimmed, rewardType);
       router.back();
     } catch {
-      setError("Couldn't add that child. Try again.");
+      setError(describeFailure(isOffline, "Couldn't add that child. Try again."));
       setIsSubmitting(false);
     }
   }

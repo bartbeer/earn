@@ -4,13 +4,17 @@ import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } fr
 
 import { Button } from '@/components/Button';
 import { TextField } from '@/components/TextField';
+import { useIsOffline } from '@/hooks/useIsOffline';
 import { useAuth } from '@/lib/auth/AuthProvider';
+import { describeFailure } from '@/lib/errorMessages';
 import { colors, spacing, typography } from '@/lib/theme';
 
-// Section 8: Supabase Auth, not home-grown. Email/password only for now —
-// the secure child join-code flow is Phase 9.
+// Section 8: Supabase Auth, not home-grown. Email/password sign-in; a
+// child's own account is created the same way (sign-up.tsx) and then
+// linked to the family via a join code (Phase 9, (onboarding)/join-family).
 export default function SignInScreen() {
   const { signIn } = useAuth();
+  const isOffline = useIsOffline();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -22,8 +26,10 @@ export default function SignInScreen() {
     try {
       await signIn(email.trim(), password);
     } catch {
-      // Never surface raw backend errors to the user (section 87).
-      setError("Couldn't sign in. Check your email and password and try again.");
+      // Never surface raw backend errors to the user (section 87). A
+      // network failure would otherwise show this exact wording too,
+      // wrongly suggesting a typo when the real problem is no connection.
+      setError(describeFailure(isOffline, "Couldn't sign in. Check your email and password and try again."));
     } finally {
       setIsSubmitting(false);
     }

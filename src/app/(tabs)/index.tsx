@@ -10,8 +10,10 @@ import { EmptyState } from '@/components/EmptyState';
 import { ProgressBar } from '@/components/ProgressBar';
 import { ChoreListSkeleton } from '@/components/Skeleton';
 import { useFamilyChildren } from '@/hooks/useFamilyChildren';
+import { useIsOffline } from '@/hooks/useIsOffline';
 import { useAuth } from '@/lib/auth/AuthProvider';
 import { isOccurrenceToday, toISODate } from '@/lib/date';
+import { describeFailure } from '@/lib/errorMessages';
 import { fetchCurrentWeek, setOccurrenceCompletion } from '@/lib/api/weeks';
 import { calculateEarnedCents, formatReward } from '@/lib/money';
 import { colors, spacing, typography } from '@/lib/theme';
@@ -20,6 +22,7 @@ import type { ChoreOccurrence, RewardType, WeekSummary } from '@/types/domain';
 export default function WeekScreen() {
   const { appState } = useAuth();
   const insets = useSafeAreaInsets();
+  const isOffline = useIsOffline();
 
   // Every hook below must run unconditionally on every render (React's
   // rules of hooks) — so the 'active' membership is read into safe
@@ -163,7 +166,7 @@ export default function WeekScreen() {
             status: nextCompleted ? 'pending' : 'completed',
           })),
         );
-        setToggleError("Couldn't save that. Try again.");
+        setToggleError(describeFailure(isOffline));
       })
       .finally(() => {
         setPendingToggleIds((current) => {

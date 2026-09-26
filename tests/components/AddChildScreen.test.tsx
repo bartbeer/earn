@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 
 import AddChildScreen from '@/app/add-child';
+import { useIsOffline } from '@/hooks/useIsOffline';
 
 import { withSafeArea } from '../testUtils';
 
@@ -10,15 +11,22 @@ jest.mock('expo-router', () => ({
   router: { back: (...args: unknown[]) => mockBack(...args) },
 }));
 
+jest.mock('@/hooks/useIsOffline', () => ({
+  useIsOffline: jest.fn(),
+}));
+
 const mockAddChild = jest.fn();
 
 jest.mock('@/lib/auth/AuthProvider', () => ({
   useAuth: () => ({ addChild: mockAddChild }),
 }));
 
+const mockedUseIsOffline = useIsOffline as jest.MockedFunction<typeof useIsOffline>;
+
 beforeEach(() => {
   mockBack.mockReset();
   mockAddChild.mockReset();
+  mockedUseIsOffline.mockReset().mockReturnValue(false);
 });
 
 // Reported: adding a child left the parent stuck on this screen, expecting
@@ -87,5 +95,21 @@ describe('AddChildScreen', () => {
     });
 
     expect(mockAddChild).toHaveBeenCalledWith('Tom', 'currency');
+  });
+
+  // Phase 10: distinguishes "you're offline" from every other save failure.
+  it('shows an offline-specific message when adding fails while offline', async () => {
+    mockedUseIsOffline.mockReturnValue(true);
+    mockAddChild.mockRejectedValue(new Error('network error'));
+    await render(withSafeArea(<AddChildScreen />));
+
+    await act(async () => {
+      fireEvent.changeText(screen.getByLabelText('Name'), 'Tom');
+    });
+    await act(async () => {
+      fireEvent.press(screen.getByText('Add child'));
+    });
+
+    expect(screen.getByText("You're offline. Try again once you're back online.")).toBeTruthy();
   });
 });

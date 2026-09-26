@@ -5,6 +5,8 @@ import { Button } from '@/components/Button';
 import { Chip } from '@/components/Chip';
 import { TextField } from '@/components/TextField';
 import { WeekdayPicker } from '@/components/WeekdayPicker';
+import { useIsOffline } from '@/hooks/useIsOffline';
+import { describeFailure } from '@/lib/errorMessages';
 import { isValidRewardAmount, MAX_STARS_AMOUNT, parseRewardAmount } from '@/lib/money';
 import { validateSchedule } from '@/lib/schedule';
 import { spacing, typography } from '@/lib/theme';
@@ -72,6 +74,7 @@ export function ChoreForm({
   const [scheduleDays, setScheduleDays] = useState<number[]>(initialValues?.scheduleDays ?? []);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const isOffline = useIsOffline();
 
   function handleRecurrenceChange(next: RecurrenceType) {
     setRecurrenceType(next);
@@ -108,7 +111,7 @@ export function ChoreForm({
     try {
       await onSubmit({ name: name.trim(), childId, amountCents, recurrenceType, scheduleDays });
     } catch {
-      setError("Couldn't save that chore. Try again.");
+      setError(describeFailure(isOffline, "Couldn't save that chore. Try again."));
     } finally {
       setIsSubmitting(false);
     }

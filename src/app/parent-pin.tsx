@@ -4,8 +4,10 @@ import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, View } from 're
 
 import { Button } from '@/components/Button';
 import { TextField } from '@/components/TextField';
+import { useIsOffline } from '@/hooks/useIsOffline';
 import { clearParentPin, hasParentPin, setParentPin } from '@/lib/api/family';
 import { useAuth } from '@/lib/auth/AuthProvider';
+import { describeFailure } from '@/lib/errorMessages';
 import { colors, spacing, typography } from '@/lib/theme';
 
 // Phase 9: the Parent PIN, a local gate on Settings' parent-only sections
@@ -18,6 +20,7 @@ import { colors, spacing, typography } from '@/lib/theme';
 export default function ParentPinScreen() {
   const { appState } = useAuth();
   const familyId = appState.status === 'active' ? appState.membership.familyId : '';
+  const isOffline = useIsOffline();
   const [hasPin, setHasPin] = useState<boolean | null>(null);
   const [pin, setPin] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -48,7 +51,7 @@ export default function ParentPinScreen() {
       await setParentPin(familyId, pin.trim());
       router.back();
     } catch {
-      setError("Couldn't save that. Try again.");
+      setError(describeFailure(isOffline));
       setIsSaving(false);
     }
   }
@@ -60,8 +63,12 @@ export default function ParentPinScreen() {
         text: 'Remove',
         style: 'destructive',
         onPress: async () => {
-          await clearParentPin(familyId);
-          router.back();
+          try {
+            await clearParentPin(familyId);
+            router.back();
+          } catch {
+            setError(describeFailure(isOffline, "Couldn't remove that. Try again."));
+          }
         },
       },
     ]);

@@ -1,8 +1,10 @@
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import { StyleSheet, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { LoadingScreen } from '@/components/LoadingScreen';
+import { OfflineBanner } from '@/components/OfflineBanner';
 import { AuthProvider, useAuth } from '@/lib/auth/AuthProvider';
 import { colors } from '@/lib/theme';
 
@@ -10,12 +12,23 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <StatusBar style="dark" />
-      <AuthProvider>
-        <RootNavigator />
-      </AuthProvider>
+      {/* Above everything, including auth screens — offline is worth
+          knowing about even before signing in. */}
+      <View style={styles.root}>
+        <OfflineBanner />
+        <AuthProvider>
+          <RootNavigator />
+        </AuthProvider>
+      </View>
     </SafeAreaProvider>
   );
 }
+
+const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+  },
+});
 
 // Route access follows real auth/membership state, not anything the client
 // could fake — signed_out/needs_family/active come from resolveAppState(),

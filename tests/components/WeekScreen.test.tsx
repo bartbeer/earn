@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 
 import WeekScreen from '@/app/(tabs)/index';
+import { useIsOffline } from '@/hooks/useIsOffline';
 import { fetchCurrentWeek, setOccurrenceCompletion } from '@/lib/api/weeks';
 import type { ChoreOccurrence, WeekSummary } from '@/types/domain';
 
@@ -37,6 +38,10 @@ jest.mock('@/hooks/useFamilyChildren', () => ({
   useFamilyChildren: () => ({ children: [], isLoading: false, error: null }),
 }));
 
+jest.mock('@/hooks/useIsOffline', () => ({
+  useIsOffline: jest.fn(),
+}));
+
 jest.mock('@/lib/api/weeks', () => ({
   fetchCurrentWeek: jest.fn(),
   setOccurrenceCompletion: jest.fn(),
@@ -46,6 +51,7 @@ const mockedFetchCurrentWeek = fetchCurrentWeek as jest.MockedFunction<typeof fe
 const mockedSetOccurrenceCompletion = setOccurrenceCompletion as jest.MockedFunction<
   typeof setOccurrenceCompletion
 >;
+const mockedUseIsOffline = useIsOffline as jest.MockedFunction<typeof useIsOffline>;
 
 const todayISO = new Date().toISOString().slice(0, 10);
 
@@ -86,6 +92,7 @@ const sampleWeek: WeekSummary = {
 beforeEach(() => {
   mockedFetchCurrentWeek.mockReset();
   mockedSetOccurrenceCompletion.mockReset();
+  mockedUseIsOffline.mockReset().mockReturnValue(false);
 });
 
 // Covers master spec section 59's important-UI-behaviour list: a loading
@@ -196,5 +203,24 @@ describe('WeekScreen', () => {
     await render(withSafeArea(<WeekScreen />));
 
     await waitFor(() => expect(screen.getByText('Nothing planned yet.')).toBeTruthy());
+  });
+
+  // Phase 10: a failed save while offline says so specifically, rather
+  // than the same generic message used for every other kind of failure.
+  it('shows an offline-specific message when a save fails while offline', async () => {
+    mockedUseIsOffline.mockReturnValue(true);
+    mockedFetchCurrentWeek.mockResolvedValue(sampleWeek);
+    mockedSetOccurrenceCompletion.mockRejectedValue(new Error('network error'));
+
+    await render(withSafeArea(<WeekScreen />));
+    await waitFor(() => expect(screen.getByText('€0.50 / €3.00')).toBeTruthy());
+
+    await act(async () => {
+      fireEvent.press(screen.getByRole('checkbox', { name: /Room tidy/ }));
+    });
+
+    expect(
+      screen.getByText("You're offline. Try again once you're back online."),
+    ).toBeTruthy();
   });
 });

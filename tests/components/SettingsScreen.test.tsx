@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-
 import { Alert } from 'react-native';
 
 import SettingsScreen from '@/app/(tabs)/settings';
+import { useIsOffline } from '@/hooks/useIsOffline';
 import {
   deactivateChild,
   forceSwitchChildRewardType,
@@ -11,6 +12,10 @@ import {
 } from '@/lib/api/family';
 
 import { withSafeArea } from '../testUtils';
+
+jest.mock('@/hooks/useIsOffline', () => ({
+  useIsOffline: jest.fn(),
+}));
 
 const mockSignOut = jest.fn();
 const mockRefetch = jest.fn();
@@ -60,6 +65,7 @@ const mockedForceSwitchChildRewardType = forceSwitchChildRewardType as jest.Mock
 >;
 const mockedHasParentPin = hasParentPin as jest.MockedFunction<typeof hasParentPin>;
 const mockedVerifyParentPin = verifyParentPin as jest.MockedFunction<typeof verifyParentPin>;
+const mockedUseIsOffline = useIsOffline as jest.MockedFunction<typeof useIsOffline>;
 
 function pressAlertButton(alertSpy: jest.SpyInstance, text: string) {
   const [, , buttons] = alertSpy.mock.calls[alertSpy.mock.calls.length - 1];
@@ -80,6 +86,7 @@ beforeEach(() => {
   mockedForceSwitchChildRewardType.mockReset().mockResolvedValue(undefined);
   mockedHasParentPin.mockReset();
   mockedVerifyParentPin.mockReset();
+  mockedUseIsOffline.mockReset().mockReturnValue(false);
 });
 
 // Covers master spec section 27: settings stays a short, flat list of
@@ -231,6 +238,76 @@ describe('SettingsScreen as a parent', () => {
 
     expect(alertSpy).toHaveBeenLastCalledWith("Still can't change this", expect.any(String));
     expect(mockRefetch).not.toHaveBeenCalled();
+
+    alertSpy.mockRestore();
+  });
+
+  // Phase 10: a plain network failure here previously always fell through
+  // to "you have chore history, delete it to switch?" — wrongly offering a
+  // destructive override for a problem that has nothing to do with chore
+  // history.
+  it('shows a plain offline message instead of the destructive-override prompt when offline', async () => {
+    mockedUseIsOffline.mockReturnValue(true);
+    mockedUpdateChildRewardType.mockReset().mockRejectedValue(new Error('network error'));
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+
+    await renderUnlocked();
+
+    await act(async () => {
+      fireEvent.press(screen.getByText('Emma'));
+    });
+    await act(async () => {
+      await pressAlertButton(alertSpy, 'Switch to Stars');
+    });
+
+    expect(alertSpy).toHaveBeenLastCalledWith(
+      "Can't change this",
+      "You're offline. Try again once you're back online.",
+    );
+    expect(mockedForceSwitchChildRewardType).not.toHaveBeenCalled();
+
+    alertSpy.mockRestore();
+  });
+
+  // Removing a child previously had no error handling at all — any
+  // failure (offline or otherwise) would have been an unhandled rejection.
+  it('shows an error instead of silently failing when removing a child fails', async () => {
+    mockedDeactivateChild.mockReset().mockRejectedValue(new Error('network error'));
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+
+    await renderUnlocked();
+
+    await act(async () => {
+      fireEvent.press(screen.getByText('Emma'));
+    });
+    await act(async () => {
+      await pressAlertButton(alertSpy, 'Remove');
+    });
+
+    expect(alertSpy).toHaveBeenLastCalledWith("Couldn't remove", "Couldn't save that. Try again.");
+    expect(mockRefetch).not.toHaveBeenCalled();
+
+    alertSpy.mockRestore();
+  });
+
+  it('shows an offline-specific error when removing a child fails while offline', async () => {
+    mockedUseIsOffline.mockReturnValue(true);
+    mockedDeactivateChild.mockReset().mockRejectedValue(new Error('network error'));
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+
+    await renderUnlocked();
+
+    await act(async () => {
+      fireEvent.press(screen.getByText('Emma'));
+    });
+    await act(async () => {
+      await pressAlertButton(alertSpy, 'Remove');
+    });
+
+    expect(alertSpy).toHaveBeenLastCalledWith(
+      "Couldn't remove",
+      "You're offline. Try again once you're back online.",
+    );
 
     alertSpy.mockRestore();
   });

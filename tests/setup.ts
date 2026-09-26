@@ -9,3 +9,12 @@ jest.mock('react-native-safe-area-context', () => {
   const mock = require('react-native-safe-area-context/jest/mock');
   return mock.default ?? mock;
 });
+
+// Default every test to "online" so the many screens that now call
+// useIsOffline() don't each need their own expo-network mock just to
+// render at all. Tests that specifically exercise offline behaviour
+// override this locally (jest.mock('expo-network', ...) or
+// jest.mock('@/hooks/useIsOffline', ...) in that file take precedence).
+jest.mock('expo-network', () => ({
+  useNetworkState: () => ({ isConnected: true, isInternetReachable: true, type: 'WIFI' }),
+}));

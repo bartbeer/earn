@@ -1,11 +1,16 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 
 import WeekDetailScreen from '@/app/history/[weekId]';
+import { useIsOffline } from '@/hooks/useIsOffline';
 import { fetchWeekById, setWeekPaymentStatus } from '@/lib/api/weeks';
 import type { WeekSummary } from '@/types/domain';
 
 jest.mock('expo-router', () => ({
   useLocalSearchParams: () => ({ weekId: 'week-1' }),
+}));
+
+jest.mock('@/hooks/useIsOffline', () => ({
+  useIsOffline: jest.fn(),
 }));
 
 jest.mock('@/lib/api/weeks', () => ({
@@ -17,6 +22,7 @@ const mockedFetchWeekById = fetchWeekById as jest.MockedFunction<typeof fetchWee
 const mockedSetWeekPaymentStatus = setWeekPaymentStatus as jest.MockedFunction<
   typeof setWeekPaymentStatus
 >;
+const mockedUseIsOffline = useIsOffline as jest.MockedFunction<typeof useIsOffline>;
 
 function makeWeek(overrides: Partial<WeekSummary> = {}): WeekSummary {
   return {
@@ -47,6 +53,7 @@ function makeWeek(overrides: Partial<WeekSummary> = {}): WeekSummary {
 beforeEach(() => {
   mockedFetchWeekById.mockReset();
   mockedSetWeekPaymentStatus.mockReset();
+  mockedUseIsOffline.mockReset().mockReturnValue(false);
 });
 
 // Phase 8: "Mark as paid" was UI-only since Phase 1-3 — it reset on every
@@ -138,5 +145,23 @@ describe('WeekDetailScreen payment status', () => {
     await render(<WeekDetailScreen />);
 
     await waitFor(() => expect(screen.getByText('Given ✓')).toBeTruthy());
+  });
+
+  // Phase 10: distinguishes "you're offline" from every other failure.
+  it('shows an offline-specific message when marking paid fails while offline', async () => {
+    mockedUseIsOffline.mockReturnValue(true);
+    mockedFetchWeekById.mockResolvedValue(makeWeek());
+    mockedSetWeekPaymentStatus.mockRejectedValue(new Error('network error'));
+
+    await render(<WeekDetailScreen />);
+    await waitFor(() => expect(screen.getByText('Mark as paid')).toBeTruthy());
+
+    await act(async () => {
+      fireEvent.press(screen.getByText('Mark as paid'));
+    });
+
+    await waitFor(() =>
+      expect(screen.getByText("You're offline. Try again once you're back online.")).toBeTruthy(),
+    );
   });
 });

@@ -4,14 +4,19 @@ import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } fr
 
 import { Button } from '@/components/Button';
 import { TextField } from '@/components/TextField';
+import { useIsOffline } from '@/hooks/useIsOffline';
 import { useAuth } from '@/lib/auth/AuthProvider';
+import { describeFailure } from '@/lib/errorMessages';
 import { colors, spacing, typography } from '@/lib/theme';
 
-// A parent creating a normal Supabase Auth account. Once signed up, the
-// root layout's route guard sends them straight to "create your family" —
-// there is no separate confirmation step here.
+// A parent creating a normal Supabase Auth account (a child does the exact
+// same sign-up, then links to the family via a join code instead of
+// creating one). Once signed up, the root layout's route guard sends them
+// straight to "create your family" — there is no separate confirmation
+// step here.
 export default function SignUpScreen() {
   const { signUp } = useAuth();
+  const isOffline = useIsOffline();
   const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -24,7 +29,9 @@ export default function SignUpScreen() {
     try {
       await signUp(email.trim(), password, displayName.trim());
     } catch {
-      setError("Couldn't create your account. Try a different email or a longer password.");
+      setError(
+        describeFailure(isOffline, "Couldn't create your account. Try a different email or a longer password."),
+      );
     } finally {
       setIsSubmitting(false);
     }

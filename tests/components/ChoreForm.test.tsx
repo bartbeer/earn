@@ -1,7 +1,18 @@
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 
 import { ChoreForm } from '@/components/ChoreForm';
+import { useIsOffline } from '@/hooks/useIsOffline';
 import type { Child } from '@/types/domain';
+
+jest.mock('@/hooks/useIsOffline', () => ({
+  useIsOffline: jest.fn(),
+}));
+
+const mockedUseIsOffline = useIsOffline as jest.MockedFunction<typeof useIsOffline>;
+
+beforeEach(() => {
+  mockedUseIsOffline.mockReset().mockReturnValue(false);
+});
 
 const childOptions: Child[] = [
   { id: 'child-1', name: 'Emma', rewardType: 'currency' },
@@ -107,6 +118,23 @@ describe('ChoreForm', () => {
       recurrenceType: 'once_weekly',
       scheduleDays: [6],
     });
+  });
+
+  // Phase 10: distinguishes "you're offline" from every other save failure.
+  it('shows an offline-specific message when submitting fails while offline', async () => {
+    mockedUseIsOffline.mockReturnValue(true);
+    const onSubmit = jest.fn().mockRejectedValue(new Error('network error'));
+    await render(
+      <ChoreForm childOptions={childOptions} submitLabel="Add chore" onSubmit={onSubmit} />,
+    );
+
+    await changeText('Chore name', 'Room tidy');
+    await press('Lucas');
+    await changeText('Amount per completion (€)', '2.50');
+    await press('Saturday', 'label');
+    await press('Add chore');
+
+    expect(screen.getByText("You're offline. Try again once you're back online.")).toBeTruthy();
   });
 });
 

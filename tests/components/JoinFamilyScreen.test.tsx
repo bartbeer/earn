@@ -2,10 +2,15 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-
 import type { ReactNode } from 'react';
 
 import JoinFamilyScreen from '@/app/(onboarding)/join-family';
+import { useIsOffline } from '@/hooks/useIsOffline';
 import { resolveFamilyJoinCode } from '@/lib/api/family';
 
 jest.mock('expo-router', () => ({
   Link: ({ children }: { children: ReactNode }) => children,
+}));
+
+jest.mock('@/hooks/useIsOffline', () => ({
+  useIsOffline: jest.fn(),
 }));
 
 jest.mock('@/lib/api/family', () => ({
@@ -22,11 +27,13 @@ jest.mock('@/lib/auth/AuthProvider', () => ({
 const mockedResolveFamilyJoinCode = resolveFamilyJoinCode as jest.MockedFunction<
   typeof resolveFamilyJoinCode
 >;
+const mockedUseIsOffline = useIsOffline as jest.MockedFunction<typeof useIsOffline>;
 
 beforeEach(() => {
   mockedResolveFamilyJoinCode.mockReset();
   mockJoinFamily.mockReset();
   mockSignOut.mockReset();
+  mockedUseIsOffline.mockReset().mockReturnValue(false);
 });
 
 // Phase 9: a child signs up for their own account normally, then redeems
@@ -157,5 +164,55 @@ describe('JoinFamilyScreen', () => {
     });
 
     expect(mockSignOut).toHaveBeenCalled();
+  });
+
+  // Phase 10: a network failure while resolving a code previously showed
+  // the exact same "that code isn't valid" wording as a genuinely bad
+  // code — wrongly telling someone their real, unexpired code was bad.
+  it('shows an offline-specific message instead of "invalid code" when resolving fails while offline', async () => {
+    mockedUseIsOffline.mockReturnValue(true);
+    mockedResolveFamilyJoinCode.mockRejectedValue(new Error('network error'));
+
+    await render(<JoinFamilyScreen />);
+
+    await act(async () => {
+      fireEvent.changeText(screen.getByLabelText('Join code'), '123456');
+    });
+    await act(async () => {
+      fireEvent.press(screen.getByText('Find my family'));
+    });
+
+    expect(screen.getByText("You're offline. Try again once you're back online.")).toBeTruthy();
+    expect(
+      screen.queryByText("That code isn't valid — check with your parent and try again."),
+    ).toBeNull();
+  });
+
+  it('shows an offline-specific message when joining fails while offline', async () => {
+    mockedUseIsOffline.mockReturnValue(true);
+    mockedResolveFamilyJoinCode.mockResolvedValue({
+      familyName: 'The Smiths',
+      children: [{ id: 'child-1', name: 'Lucas' }],
+    });
+    mockJoinFamily.mockRejectedValue(new Error('network error'));
+
+    await render(<JoinFamilyScreen />);
+
+    await act(async () => {
+      fireEvent.changeText(screen.getByLabelText('Join code'), '123456');
+    });
+    await act(async () => {
+      fireEvent.press(screen.getByText('Find my family'));
+    });
+    await waitFor(() => expect(screen.getByText('Lucas')).toBeTruthy());
+
+    await act(async () => {
+      fireEvent.press(screen.getByText('Lucas'));
+    });
+    await act(async () => {
+      fireEvent.press(screen.getByText('Join'));
+    });
+
+    expect(screen.getByText("You're offline. Try again once you're back online.")).toBeTruthy();
   });
 });
