@@ -54,23 +54,32 @@ export default function ManageChoresScreen() {
         <EmptyState message="No chores yet." />
       ) : (
         <View style={styles.list}>
-          {chores.map((chore) => (
-            <Pressable key={chore.id} onPress={() => router.push(`/edit-chore/${chore.id}`)}>
-              <Card style={styles.choreCard}>
-                <View style={styles.choreInfo}>
-                  <Text style={typography.taskName}>{chore.name}</Text>
-                  <Text style={typography.secondaryMeta}>
-                    {childNameById[chore.childId] ?? ''} ·{' '}
-                    {describeSchedule(chore.recurrenceType, chore.scheduleDays)}
-                  </Text>
-                </View>
-                <Text style={typography.taskAmount}>
-                  {formatReward(chore.amountCents, childRewardTypeById[chore.childId] ?? 'currency')}
-                </Text>
-                <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
-              </Card>
-            </Pressable>
-          ))}
+          {chores.map((chore) => {
+            const amountLabel = formatReward(
+              chore.amountCents,
+              childRewardTypeById[chore.childId] ?? 'currency',
+            );
+            return (
+              <Pressable
+                key={chore.id}
+                onPress={() => router.push(`/edit-chore/${chore.id}`)}
+                accessibilityRole="button"
+                accessibilityLabel={`${chore.name}, ${childNameById[chore.childId] ?? ''}, ${describeSchedule(chore.recurrenceType, chore.scheduleDays)}, ${amountLabel}`}
+              >
+                <Card style={styles.choreCard}>
+                  <View style={styles.choreInfo}>
+                    <Text style={typography.taskName}>{chore.name}</Text>
+                    <Text style={typography.secondaryMeta}>
+                      {childNameById[chore.childId] ?? ''} ·{' '}
+                      {describeSchedule(chore.recurrenceType, chore.scheduleDays)}
+                    </Text>
+                  </View>
+                  <Text style={typography.taskAmount}>{amountLabel}</Text>
+                  <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
+                </Card>
+              </Pressable>
+            );
+          })}
         </View>
       )}
 

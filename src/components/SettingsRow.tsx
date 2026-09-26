@@ -16,6 +16,11 @@ export function SettingsRow({ label, value, onPress }: SettingsRowProps) {
       onPress={onPress}
       disabled={!onPress}
       accessibilityRole={onPress ? 'button' : undefined}
+      // Explicit rather than left to the default "read every descendant
+      // Text node" behaviour — that default isn't guaranteed to skip the
+      // chevron icon's own glyph, which icon-font components render as
+      // literal (if invisible-looking) text content.
+      accessibilityLabel={value ? `${label}, ${value}` : label}
       style={styles.row}
     >
       <Text style={typography.body}>{label}</Text>
