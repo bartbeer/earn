@@ -74,6 +74,10 @@ export default function SignInScreen() {
         <Link href="/(auth)/sign-up" style={styles.link}>
           <Text style={typography.secondaryMeta}>New family? Create an account</Text>
         </Link>
+
+        <Link href="/(auth)/forgot-password" style={styles.link}>
+          <Text style={typography.secondaryMeta}>Forgot your password?</Text>
+        </Link>
       </ScrollView>
     </KeyboardAvoidingView>
   );

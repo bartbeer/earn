@@ -17,6 +17,8 @@ interface AuthContextValue {
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string, displayName: string) => Promise<void>;
   signOut: () => Promise<void>;
+  requestPasswordReset: (email: string) => Promise<void>;
+  confirmPasswordReset: (email: string, code: string, newPassword: string) => Promise<void>;
   createFamily: (name: string) => Promise<void>;
   joinFamily: (joinCode: string, childId: string) => Promise<void>;
   addChild: (name: string, rewardType: RewardType) => Promise<void>;
@@ -90,6 +92,41 @@ export function AuthProvider({ children }: PropsWithChildren) {
     if (error) throw error;
   }
 
+  /**
+   * Sends a 6-digit recovery code to the given email — never reveals
+   * whether the address actually has an account (matches Supabase's own
+   * behaviour of always "succeeding" here regardless, to avoid leaking
+   * which emails are registered). The email itself is customized
+   * (supabase/templates/recovery.html) to show the raw code, since the
+   * app has the user type it in manually rather than follow a link —
+   * the same pattern as the existing join-code flow, and one that avoids
+   * needing deep-link/universal-link setup this app doesn't otherwise need.
+   */
+  async function requestPasswordReset(email: string) {
+    const { error } = await supabase.auth.resetPasswordForEmail(email);
+    if (error) throw error;
+  }
+
+  /**
+   * Verifying the code signs the user in with a short-lived recovery
+   * session (a `PASSWORD_RECOVERY`-flavoured sign-in, per Supabase's own
+   * verifyOtp docs) — updateUser() then sets the real new password while
+   * still in that session. No manual navigation afterwards: this sign-in
+   * flips appState the same way any other one does, and the root layout's
+   * Stack.Protected guards react on their own.
+   */
+  async function confirmPasswordReset(email: string, code: string, newPassword: string) {
+    const { error: verifyError } = await supabase.auth.verifyOtp({
+      email,
+      token: code,
+      type: 'recovery',
+    });
+    if (verifyError) throw verifyError;
+
+    const { error: updateError } = await supabase.auth.updateUser({ password: newPassword });
+    if (updateError) throw updateError;
+  }
+
   async function createFamily(name: string) {
     if (!session) throw new Error('Not signed in.');
     await apiCreateFamily(name, session.user.id);
@@ -111,7 +148,18 @@ export function AuthProvider({ children }: PropsWithChildren) {
 
   return (
     <AuthContext.Provider
-      value={{ appState, isLoading, signIn, signUp, signOut, createFamily, joinFamily, addChild }}
+      value={{
+        appState,
+        isLoading,
+        signIn,
+        signUp,
+        signOut,
+        requestPasswordReset,
+        confirmPasswordReset,
+        createFamily,
+        joinFamily,
+        addChild,
+      }}
     >
       {children}
     </AuthContext.Provider>

@@ -249,6 +249,15 @@ otp_expiry = 3600
 # subject = "You have been invited"
 # content_path = "./supabase/templates/invite.html"
 
+# The default recovery template only shows a magic link — customized so
+# the email displays the raw {{ .Token }} OTP, since the app has the user
+# type the code in manually (matching the existing join-code pattern)
+# rather than following a deep link, which would need URL scheme/universal
+# link setup this app doesn't otherwise need.
+[auth.email.template.recovery]
+subject = "Reset your Earn! password"
+content_path = "./supabase/templates/recovery.html"
+
 # Uncomment to customize notification email template
 # [auth.email.notification.password_changed]
 # enabled = true
